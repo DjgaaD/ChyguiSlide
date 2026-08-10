@@ -1,0 +1,114 @@
+﻿<?xml version="1.0" encoding="UTF-8" ?>
+<Page
+    x:Class="ChyguiSlide.Views.DashboardPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:converters="using:ChyguiSlide.Converters"
+    Loaded="OnPageLoaded"
+    mc:Ignorable="d">
+
+    <Page.Resources>
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
+    </Page.Resources>
+
+    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" Padding="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Spacing="4" Margin="0,0,0,16">
+            <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="Обзор" />
+        </StackPanel>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="12" Margin="0,0,0,16">
+            <ComboBox
+                MinWidth="280"
+                Header="Сборник"
+                ItemsSource="{Binding CollectionFilters}"
+                SelectedItem="{Binding SelectedCollectionFilter, Mode=TwoWay}"
+                DisplayMemberPath="Title" />
+            <ComboBox
+                MinWidth="120"
+                Header="Топ"
+                ItemsSource="{Binding TopLimitOptions}"
+                SelectedItem="{Binding SelectedTopLimit, Mode=TwoWay}" />
+            <ProgressRing
+                Width="24"
+                Height="24"
+                VerticalAlignment="Bottom"
+                Margin="0,0,0,8"
+                IsActive="{Binding IsBusy}" />
+        </StackPanel>
+
+        <Border
+            Grid.Row="2"
+            Background="{ThemeResource LayerFillColorDefaultBrush}"
+            CornerRadius="12"
+            Padding="8">
+            <ListView
+                ItemsSource="{Binding TopSongs}"
+                SelectionMode="Single">
+                <ListView.Header>
+                    <Grid Padding="12,8" ColumnSpacing="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="48" />
+                            <ColumnDefinition Width="56" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="180" />
+                            <ColumnDefinition Width="88" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" FontWeight="SemiBold" Text="#" />
+                        <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="№" />
+                        <TextBlock Grid.Column="2" FontWeight="SemiBold" Text="Песня" />
+                        <TextBlock Grid.Column="3" FontWeight="SemiBold" Text="Показы" HorizontalAlignment="Right" />
+                    </Grid>
+                </ListView.Header>
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="Padding" Value="4,2" />
+                        <Setter Property="MinHeight" Value="0" />
+                    </Style>
+                </ListView.ItemContainerStyle>
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <Grid Padding="8,6" ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="48" />
+                                <ColumnDefinition Width="56" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="88" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                Grid.Column="0"
+                                VerticalAlignment="Center"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="{Binding Rank}" />
+                            <TextBlock
+                                Grid.Column="1"
+                                VerticalAlignment="Center"
+                                Text="{Binding Number}"
+                                Visibility="{Binding Number, Converter={StaticResource NullToVisibilityConverter}}" />
+                            <TextBlock
+                                Grid.Column="2"
+                                VerticalAlignment="Center"
+                                FontWeight="SemiBold"
+                                Text="{Binding Title}"
+                                TextTrimming="CharacterEllipsis" />
+                            <TextBlock
+                                Grid.Column="3"
+                                VerticalAlignment="Center"
+                                HorizontalAlignment="Right"
+                                FontWeight="SemiBold"
+                                Text="{Binding PlayCount}" />
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </Border>
+    </Grid>
+</Page>

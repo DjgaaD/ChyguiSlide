@@ -1,0 +1,52 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="ChyguiSlide.Controls.SelectableTextCard"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:local="using:ChyguiSlide.Controls"
+    mc:Ignorable="d"
+    Background="Transparent">
+
+    <!-- Содержимое карточки; рамка/фон/hover — в SelectableCardListViewItemStyle -->
+    <StackPanel Spacing="6">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock
+                x:Name="TitleText"
+                Grid.Column="0"
+                FontSize="14"
+                TextTrimming="CharacterEllipsis"
+                VerticalAlignment="Center" />
+            <Border
+                x:Name="LiveBadge"
+                Grid.Column="1"
+                Margin="8,0,0,0"
+                Padding="8,2"
+                CornerRadius="10"
+                Background="{ThemeResource AccentFillColorDefaultBrush}"
+                Visibility="Collapsed">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <local:LucideIcon
+                        Kind="play"
+                        Size="11"
+                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                        VerticalAlignment="Center" />
+                    <TextBlock
+                        Text="сейчас"
+                        FontSize="11"
+                        FontWeight="SemiBold"
+                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                        VerticalAlignment="Center" />
+                </StackPanel>
+            </Border>
+        </Grid>
+        <TextBlock
+            x:Name="BodyText"
+            TextWrapping="WrapWholeWords" />
+    </StackPanel>
+</UserControl>

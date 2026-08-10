@@ -1,0 +1,25 @@
+## Build
+bin/
+obj/
+.vs/
+artifacts/
+*.user
+*.binlog
+*.log
+UpgradeLog.htm
+xaml-error.txt
+
+## Local probes / scratch
+_sps_probe/
+Backup/
+Temp/
+
+## User data must never be published
+**/catalog.db
+**/display-settings.json
+**/yandex-disk.json
+
+
+## OS
+Thumbs.db
+Desktop.ini

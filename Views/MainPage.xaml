@@ -1,0 +1,53 @@
+﻿<?xml version="1.0" encoding="UTF-8" ?>
+<Page
+    x:Class="ChyguiSlide.Views.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:viewModels="using:ChyguiSlide.ViewModels"
+    xmlns:controls="using:ChyguiSlide.Controls"
+    xmlns:converters="using:ChyguiSlide.Converters"
+    mc:Ignorable="d">
+    <Page.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+        <DataTemplate
+            x:Key="NavigationItemTemplate"
+            x:DataType="viewModels:ShellNavigationItem">
+            <NavigationViewItem Tag="{x:Bind PageType}">
+                <NavigationViewItem.Content>
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <!-- Lucide берёт цвет из темы (SvgImageSource был всегда чёрным) -->
+                        <controls:LucideIcon
+                            Kind="{x:Bind Icon}"
+                            Size="18"
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                        <TextBlock
+                            Text="{x:Bind Title}"
+                            VerticalAlignment="Center"
+                            Tag="NavLabel"
+                            Visibility="{Binding IsPaneOpen, ElementName=ShellNav, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    </StackPanel>
+                </NavigationViewItem.Content>
+            </NavigationViewItem>
+        </DataTemplate>
+    </Page.Resources>
+
+    <NavigationView
+        x:Name="ShellNav"
+        MenuItemsSource="{x:Bind ViewModel.NavigationItems}"
+        MenuItemTemplate="{StaticResource NavigationItemTemplate}"
+        PaneDisplayMode="Left"
+        OpenPaneLength="168"
+        CompactPaneLength="48"
+        IsBackButtonVisible="Collapsed"
+        IsSettingsVisible="False"
+        SelectedItem="{x:Bind ViewModel.SelectedItem, Mode=TwoWay}"
+        SelectionChanged="OnNavigationViewSelectionChanged"
+        Loaded="OnNavigationViewLoaded">
+        <NavigationView.Content>
+            <Frame x:Name="ContentFrame" />
+        </NavigationView.Content>
+    </NavigationView>
+</Page>

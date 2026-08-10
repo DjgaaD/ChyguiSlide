@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "ChyguiSlide (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "ChyguiSlide (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

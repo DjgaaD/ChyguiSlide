@@ -1,0 +1,181 @@
+﻿<?xml version="1.0" encoding="UTF-8" ?>
+<Page
+    x:Class="ChyguiSlide.Views.BiblePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:converters="using:ChyguiSlide.Converters"
+    Loaded="OnPageLoaded"
+    mc:Ignorable="d">
+
+    <Grid Margin="24,16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid.Resources>
+            <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+        </Grid.Resources>
+
+        <Grid Grid.Row="0" Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Spacing="4">
+                <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="Библия" />
+                <TextBlock
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="{Binding TranslationName}" />
+            </StackPanel>
+
+            <StackPanel
+                Grid.Column="1"
+                Orientation="Horizontal"
+                Spacing="8"
+                VerticalAlignment="Center">
+                <ProgressRing
+                    Width="24"
+                    Height="24"
+                    IsActive="{Binding IsBusy}" />
+                <Button
+                    Content="Показать на экране"
+                    Command="{Binding StartProjectionCommand}"
+                    Style="{StaticResource AccentButtonStyle}" />
+            </StackPanel>
+        </Grid>
+
+        <Grid Grid.Row="1" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="260" />
+                <ColumnDefinition Width="120" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <Border
+                Grid.Column="0"
+                Background="{ThemeResource LayerFillColorDefaultBrush}"
+                CornerRadius="12"
+                Padding="8">
+                <Grid RowSpacing="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <ComboBox
+                        HorizontalAlignment="Stretch"
+                        ItemsSource="{Binding TestamentFilterItems}"
+                        SelectedItem="{Binding SelectedTestamentFilter, Mode=TwoWay}"
+                        DisplayMemberPath="Title" />
+                    <AutoSuggestBox
+                        x:Name="SearchBox"
+                        Grid.Row="1"
+                        PlaceholderText="2пар 15 8 · Екк 11 10 · текст…"
+                        QuerySubmitted="OnSearchSubmitted"
+                        TextChanged="OnSearchTextChanged" />
+                    <ListView
+                        Grid.Row="2"
+                        ItemsSource="{Binding Books}"
+                        SelectedItem="{Binding SelectedBook, Mode=TwoWay}"
+                        SelectionMode="Single">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock
+                                    Padding="4,6"
+                                    FontWeight="SemiBold"
+                                    Text="{Binding DisplayName}" />
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </Grid>
+            </Border>
+
+            <Border
+                Grid.Column="1"
+                Background="{ThemeResource LayerFillColorDefaultBrush}"
+                CornerRadius="12"
+                Padding="8">
+                <Grid RowSpacing="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock
+                        FontWeight="SemiBold"
+                        Text="Глава"
+                        HorizontalAlignment="Center" />
+                    <ListView
+                        x:Name="ChapterList"
+                        Grid.Row="1"
+                        ItemsSource="{Binding Chapters}"
+                        SelectionChanged="OnChapterSelectionChanged"
+                        SelectionMode="Single">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    FontSize="16"
+                                    Text="{Binding}" />
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </Grid>
+            </Border>
+
+            <Border
+                Grid.Column="2"
+                Background="{ThemeResource LayerFillColorDefaultBrush}"
+                CornerRadius="12"
+                Padding="8">
+                <Grid>
+                    <Grid Visibility="{Binding IsSearchMode, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Invert}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock
+                            Margin="8,4"
+                            Style="{StaticResource SubtitleTextBlockStyle}"
+                            Text="{Binding SelectionSummary}" />
+                        <ListView
+                            x:Name="VerseList"
+                            Grid.Row="1"
+                            ItemsSource="{Binding Verses}"
+                            SelectedItem="{Binding SelectedVerse, Mode=TwoWay}"
+                            SelectionMode="Single"
+                            ItemContainerStyle="{StaticResource SelectableCardListViewItemStyle}"
+                            ItemTemplate="{StaticResource SelectableCardSelectedTemplate}" />
+                    </Grid>
+
+                    <Grid Visibility="{Binding IsSearchMode, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock
+                            Margin="8,4"
+                            Style="{StaticResource SubtitleTextBlockStyle}"
+                            Text="Результаты поиска" />
+                        <ListView
+                            Grid.Row="1"
+                            ItemsSource="{Binding SearchResults}"
+                            SelectionChanged="OnSearchResultSelected">
+                            <ListView.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Spacing="4" Padding="4,6">
+                                        <TextBlock FontWeight="SemiBold" Text="{Binding Reference}" />
+                                        <TextBlock Text="{Binding Text}" TextWrapping="WrapWholeWords" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListView.ItemTemplate>
+                        </ListView>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</Page>
