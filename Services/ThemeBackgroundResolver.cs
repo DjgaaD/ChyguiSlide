@@ -75,6 +75,11 @@ public static class ThemeBackgroundResolver
             return null;
         }
 
+        if (theme.BackgroundPickMode == ThemeBackgroundPickMode.SolidColor)
+        {
+            return null;
+        }
+
         var pool = ResolvePool(theme, isBibleContent);
         var items = GetPoolItems(theme, pool);
 

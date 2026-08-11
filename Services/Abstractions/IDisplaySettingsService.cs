@@ -27,6 +27,8 @@ public interface IDisplaySettingsService
     Task SetCatalogSortModeAsync(CatalogSortMode mode);
     Task<bool> GetShowBibleReferenceAsync();
     Task SetShowBibleReferenceAsync(bool show);
+    Task<bool> GetKeepProjectionBackgroundAsync();
+    Task SetKeepProjectionBackgroundAsync(bool keep);
     Task<BibleReferencePlacement> GetBibleReferencePlacementAsync();
     Task SetBibleReferencePlacementAsync(BibleReferencePlacement placement);
     Task<string> GetBibleReferenceAlignmentAsync();

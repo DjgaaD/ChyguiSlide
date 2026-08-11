@@ -21,6 +21,9 @@ public class ThemePreset
 
     public SectionTransitionMode SectionTransitionMode { get; set; } = SectionTransitionMode.CrossFade;
 
+    /// <summary>Длительность анимации смены слайда в миллисекундах.</summary>
+    public int SectionTransitionDurationMs { get; set; } = 750;
+
     public ThemeColors Colors { get; set; } = ThemeColors.Default;
 
     /// <summary>Устаревшее поле: один фон. Сохраняется для совместимости / миграции в Wallpapers.</summary>

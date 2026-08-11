@@ -34,8 +34,14 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
     private HotkeyBindingItem? _listeningHotkey;
     private bool _hotkeysLoaded;
     private bool _suppressBibleReferencePersist;
+    private bool _suppressKeepProjectionBackgroundPersist;
+    private bool _isModalEditing;
+
+    public event EventHandler<ThemePreset>? ThemePresetSaved;
+    public event EventHandler? ThemePresetDeleted;
 
     public ObservableCollection<ThemePreset> Presets { get; } = new();
+    public ObservableCollection<ThemePresetListItem> PresetItems { get; } = new();
     public ObservableCollection<HotkeyBindingItem> Hotkeys { get; } = new();
     public ObservableCollection<SettingsNavItem> SettingsSections { get; } = new(
         new[]
@@ -82,6 +88,12 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
     private SectionTransitionOptionItem? selectedSectionTransition;
 
     [ObservableProperty]
+    private double sectionTransitionDurationMs = 750;
+
+    [ObservableProperty]
+    private bool isTransitionSpeedVisible = true;
+
+    [ObservableProperty]
     private string primaryColor = ThemeColors.Default.Primary;
 
     [ObservableProperty]
@@ -106,13 +118,19 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
     private WallpaperPoolOptionItem? selectedWallpaperPool;
 
     [ObservableProperty]
-    private ThemeWallpaper? selectedWallpaper;
+    private ThemeWallpaperItem? selectedWallpaper;
 
     [ObservableProperty]
     private bool isWallpaperPoolSelectorVisible;
 
     [ObservableProperty]
     private bool isFixedWallpaperPickMode = true;
+
+    [ObservableProperty]
+    private bool isWallpaperGalleryVisible = true;
+
+    [ObservableProperty]
+    private bool isSolidColorBackgroundMode;
 
     [ObservableProperty]
     private string wallpaperEmptyHint = "Добавьте обои в этот набор.";
@@ -168,6 +186,9 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
     private bool showBibleReference;
 
     [ObservableProperty]
+    private bool keepProjectionBackground;
+
+    [ObservableProperty]
     private BibleReferencePlacementItem? selectedBibleReferencePlacement;
 
     [ObservableProperty]
@@ -178,7 +199,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
     public ObservableCollection<SectionTransitionOptionItem> SectionTransitionOptions { get; } = new();
     public ObservableCollection<BackgroundPickModeOptionItem> BackgroundPickModeOptions { get; } = new();
     public ObservableCollection<WallpaperPoolOptionItem> WallpaperPoolOptions { get; } = new();
-    public ObservableCollection<ThemeWallpaper> EditingPoolWallpapers { get; } = new();
+    public ObservableCollection<ThemeWallpaperItem> EditingPoolWallpapers { get; } = new();
     public ObservableCollection<AppUiThemeOptionItem> AppUiThemeOptions { get; } = new();
 
     [ObservableProperty]
@@ -257,7 +278,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         SetTextAlignmentCommand = new RelayCommand<string?>(SetTextAlignment);
         SaveCommand = new AsyncRelayCommand(SaveAsync, CanSave);
         ApplyThemeCommand = new AsyncRelayCommand(ApplyThemeAsync, () => SelectedPreset is not null && !IsBusy);
-        DeleteCommand = new AsyncRelayCommand(DeleteAsync, () => SelectedPreset is not null && !IsBusy);
+        DeleteCommand = new AsyncRelayCommand(DeleteAsync, () => _currentPresetId.HasValue && !IsBusy);
         RefreshDisplaysCommand = new AsyncRelayCommand(LoadDisplaysAsync);
         SaveDisplaySelectionCommand = new AsyncRelayCommand(SaveDisplaySelectionAsync);
         ResetHotkeysCommand = new AsyncRelayCommand(ResetHotkeysAsync);
@@ -308,12 +329,13 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
                 SelectWallpaperAsFixedCommand.NotifyCanExecuteChanged();
             }
 
-            // Автосохранение при изменении свойств редактируемого стиля
-            if (_currentPresetId.HasValue && args.PropertyName is nameof(PresetName)
+            // Автосохранение при изменении свойств редактируемого стиля (только вне модального редактора)
+            if (!_isModalEditing && _currentPresetId.HasValue && args.PropertyName is nameof(PresetName)
                 or nameof(FontFamily)
                 or nameof(IsBold)
                 or nameof(TextAlignment)
                 or nameof(SelectedSectionTransition)
+                or nameof(SectionTransitionDurationMs)
                 or nameof(PrimaryColor)
                 or nameof(BackgroundColor)
                 or nameof(LoopBackgroundMedia)
@@ -440,6 +462,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         }
 
         await LoadAppUiThemeAsync(cancellationToken);
+        await LoadKeepProjectionBackgroundAsync();
 
         if (Presets.Count > 0)
         {
@@ -593,28 +616,6 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
             showExtraLines: true));
 
         TextLayoutOptions.Add(new TextLayoutOptionItem(
-            TextLayoutMode.MaximizeFont,
-            "Строка 1 Строка 1",
-            "Строка 1 Строка 1 Строка 1",
-            "Строка 2 Строка 2",
-            "Строка 2 Строка 2 Строка 2",
-            "Строка 3 Строка 3",
-            "Строка 3 Строка 3 Строка 3",
-            previewFontSize: 15,
-            showExtraLines: true));
-
-        TextLayoutOptions.Add(new TextLayoutOptionItem(
-            TextLayoutMode.WrapToWidth,
-            "Строка 1 Строка 1 Строка 1",
-            "Строка 1 Строка 1",
-            "Строка 2 Строка 2 Строка 2",
-            "Строка 2 Строка 2",
-            "Строка 3 Строка 3 Строка 3",
-            "Строка 3 Строка 3",
-            previewFontSize: 14,
-            showExtraLines: true));
-
-        TextLayoutOptions.Add(new TextLayoutOptionItem(
             TextLayoutMode.ShrinkToFit,
             "Строка 1 Строка 1 Строка 1 Строка 1 Строка 1",
             "Строка 2 Строка 2 Строка 2 Строка 2 Строка 2",
@@ -647,7 +648,26 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
 
         SelectedSectionTransition = SectionTransitionOptions.FirstOrDefault(o => o.Mode == SectionTransitionMode.CrossFade)
             ?? SectionTransitionOptions.FirstOrDefault();
+        UpdateTransitionSpeedVisibility();
     }
+
+    private void UpdateTransitionSpeedVisibility() =>
+        IsTransitionSpeedVisible = SelectedSectionTransition?.Mode.UsesDuration() == true;
+
+    partial void OnSelectedSectionTransitionChanged(SectionTransitionOptionItem? value) =>
+        UpdateTransitionSpeedVisibility();
+
+    public string SectionTransitionDurationLabel
+    {
+        get
+        {
+            var seconds = Math.Clamp(SectionTransitionDurationMs, 150, 3000) / 1000.0;
+            return $"{seconds:0.0} с";
+        }
+    }
+
+    partial void OnSectionTransitionDurationMsChanged(double value) =>
+        OnPropertyChanged(nameof(SectionTransitionDurationLabel));
 
     private void BuildBackgroundPickModeOptions()
     {
@@ -660,7 +680,21 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
             ThemeBackgroundPickMode.RandomOnStart,
             "Случайно при запуске",
             "При каждом запуске трансляции выбирается случайный файл из набора."));
+        BackgroundPickModeOptions.Add(new BackgroundPickModeOptionItem(
+            ThemeBackgroundPickMode.SolidColor,
+            "Сплошной цвет",
+            "Фон — цвет стиля, без изображения и видео."));
         SelectedBackgroundPickMode = BackgroundPickModeOptions.FirstOrDefault();
+        UpdateBackgroundModeUiFlags();
+    }
+
+    private void UpdateBackgroundModeUiFlags()
+    {
+        var mode = SelectedBackgroundPickMode?.Mode ?? ThemeBackgroundPickMode.Fixed;
+        IsSolidColorBackgroundMode = mode == ThemeBackgroundPickMode.SolidColor;
+        IsWallpaperGalleryVisible = mode is ThemeBackgroundPickMode.Fixed or ThemeBackgroundPickMode.RandomOnStart;
+        IsFixedWallpaperPickMode = mode == ThemeBackgroundPickMode.Fixed;
+        SelectWallpaperAsFixedCommand.NotifyCanExecuteChanged();
     }
 
     private void BuildAppUiThemeOptions()
@@ -678,7 +712,12 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
             AppUiThemeMode.Dark,
             "Тёмная",
             "Всегда тёмный интерфейс."));
+
+        // Стартовое значение нужно только для инициализации UI.
+        // Не даём ему перезаписать сохранённую пользователем тему до LoadAppUiThemeAsync().
+        _suppressAppUiThemePersist = true;
         SelectedAppUiTheme = AppUiThemeOptions.FirstOrDefault();
+        _suppressAppUiThemePersist = false;
     }
 
     private bool _suppressAppUiThemePersist;
@@ -777,23 +816,67 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         BackgroundMediaDisplayName = _themeBackgroundMediaService.GetDisplayName(BackgroundMediaPath);
     }
 
+    private void UpdateFixedWallpaperSelectionVisuals()
+    {
+        var selectedId = GetSelectedWallpaperId(GetEditingPool());
+        foreach (var item in EditingPoolWallpapers)
+        {
+            item.IsFixedSelected = IsFixedWallpaperPickMode && item.Id == selectedId;
+        }
+    }
+
     private void RefreshEditingPoolWallpapers()
     {
-        IsWallpaperPoolSelectorVisible = UseSeparateBackgrounds;
-        IsFixedWallpaperPickMode = SelectedBackgroundPickMode?.Mode != ThemeBackgroundPickMode.RandomOnStart;
+        IsWallpaperPoolSelectorVisible = UseSeparateBackgrounds && IsWallpaperGalleryVisible;
+        IsFixedWallpaperPickMode = SelectedBackgroundPickMode?.Mode == ThemeBackgroundPickMode.Fixed;
 
         var pool = GetEditingPool();
         var selectedId = GetSelectedWallpaperId(pool);
-        var items = _allWallpapers
+        var entities = _allWallpapers
             .Where(w => w.Pool == pool)
             .OrderBy(w => w.SortOrder)
             .ThenBy(w => w.DisplayName, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
 
-        EditingPoolWallpapers.Clear();
-        foreach (var item in items)
+        var existing = EditingPoolWallpapers.ToDictionary(x => x.Id);
+        var newIds = entities.Select(e => e.Id).ToHashSet();
+
+        // Удаляем только то, чего больше нет — без Clear(), чтобы не мигали превью
+        for (var i = EditingPoolWallpapers.Count - 1; i >= 0; i--)
         {
-            EditingPoolWallpapers.Add(item);
+            if (!newIds.Contains(EditingPoolWallpapers[i].Id))
+            {
+                EditingPoolWallpapers.RemoveAt(i);
+            }
+        }
+
+        for (var index = 0; index < entities.Count; index++)
+        {
+            var entity = entities[index];
+            var isFixed = IsFixedWallpaperPickMode && entity.Id == selectedId;
+
+            if (existing.TryGetValue(entity.Id, out var item))
+            {
+                item.SyncFromEntity(entity, isFixed);
+                var currentIndex = EditingPoolWallpapers.IndexOf(item);
+                if (currentIndex < 0)
+                {
+                    EditingPoolWallpapers.Insert(Math.Min(index, EditingPoolWallpapers.Count), item);
+                }
+                else if (currentIndex != index)
+                {
+                    EditingPoolWallpapers.Move(currentIndex, Math.Min(index, EditingPoolWallpapers.Count - 1));
+                }
+            }
+            else
+            {
+                item = new ThemeWallpaperItem(entity)
+                {
+                    IsFixedSelected = isFixed
+                };
+                EditingPoolWallpapers.Insert(Math.Min(index, EditingPoolWallpapers.Count), item);
+                _ = item.LoadPreviewAsync();
+            }
         }
 
         WallpaperEmptyHint = pool switch
@@ -804,11 +887,44 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         };
         IsEditingPoolEmpty = EditingPoolWallpapers.Count == 0;
 
-        SelectedWallpaper = EditingPoolWallpapers.FirstOrDefault(w => w.Id == selectedId)
+        var preferred = EditingPoolWallpapers.FirstOrDefault(w => w.Id == selectedId)
             ?? EditingPoolWallpapers.FirstOrDefault();
+        if (!ReferenceEquals(SelectedWallpaper, preferred))
+        {
+            SelectedWallpaper = preferred;
+        }
 
         SelectWallpaperAsFixedCommand.NotifyCanExecuteChanged();
         RemoveWallpaperCommand.NotifyCanExecuteChanged();
+    }
+
+    public async Task CommitWallpaperDisplayNameAsync(ThemeWallpaperItem? item)
+    {
+        if (item is null)
+        {
+            return;
+        }
+
+        var name = string.IsNullOrWhiteSpace(item.DisplayName)
+            ? Path.GetFileNameWithoutExtension(item.FilePath)
+            : item.DisplayName.Trim();
+        item.DisplayName = name;
+
+        var entity = _allWallpapers.FirstOrDefault(w => w.Id == item.Id);
+        if (entity is not null)
+        {
+            entity.DisplayName = name;
+        }
+
+        try
+        {
+            await _catalogService.UpdateThemeWallpaperDisplayNameAsync(item.Id, name);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = null;
+            await ErrorDialog.ShowAsync("Не удалось сохранить имя обоев", ex);
+        }
     }
 
     partial void OnUseSeparateBackgroundsChanged(bool value)
@@ -832,12 +948,14 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
 
     partial void OnSelectedBackgroundPickModeChanged(BackgroundPickModeOptionItem? value)
     {
-        IsFixedWallpaperPickMode = value?.Mode != ThemeBackgroundPickMode.RandomOnStart;
-        SelectWallpaperAsFixedCommand.NotifyCanExecuteChanged();
+        UpdateBackgroundModeUiFlags();
+        RefreshEditingPoolWallpapers();
     }
 
     private static SectionTransitionMode NormalizeTransition(SectionTransitionMode mode) =>
-        mode is SectionTransitionMode.None or SectionTransitionMode.CrossFade
+        mode is SectionTransitionMode.None
+            or SectionTransitionMode.CrossFade
+            or SectionTransitionMode.FadeThrough
             ? mode
             : SectionTransitionMode.CrossFade;
 
@@ -863,6 +981,68 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         finally
         {
             _suppressBibleReferencePersist = false;
+        }
+    }
+
+    private async Task LoadKeepProjectionBackgroundAsync()
+    {
+        try
+        {
+            _suppressKeepProjectionBackgroundPersist = true;
+            KeepProjectionBackground = await _displaySettingsService.GetKeepProjectionBackgroundAsync();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"LoadKeepProjectionBackgroundAsync: {ex.Message}");
+        }
+        finally
+        {
+            _suppressKeepProjectionBackgroundPersist = false;
+        }
+    }
+
+    partial void OnKeepProjectionBackgroundChanged(bool value)
+    {
+        if (!_suppressKeepProjectionBackgroundPersist)
+        {
+            _ = PersistKeepProjectionBackgroundAsync(value);
+        }
+    }
+
+    private async Task PersistKeepProjectionBackgroundAsync(bool keep)
+    {
+        try
+        {
+            await _displaySettingsService.SetKeepProjectionBackgroundAsync(keep);
+
+            if (keep)
+            {
+                if (App.AppHost.Services.GetService(typeof(IProjectionStateService)) is IProjectionStateService state)
+                {
+                    state.Clear();
+                }
+
+                _projectionDisplayService.SetBlackout(false);
+
+                if (!_projectionDisplayService.IsOpen)
+                {
+                    await _projectionDisplayService.ShowAsync();
+                }
+            }
+            else if (_projectionDisplayService.IsOpen)
+            {
+                var hasContent = App.AppHost.Services.GetService(typeof(IProjectionStateService)) is IProjectionStateService state
+                    && state.Current.SongId is not null
+                    && state.Current.VisibleLines.Count > 0;
+                if (!hasContent)
+                {
+                    _projectionDisplayService.Hide();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"PersistKeepProjectionBackgroundAsync: {ex.Message}");
         }
     }
 
@@ -1073,7 +1253,6 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
                 if (savedPreset is not null)
                 {
                     SelectedPreset = savedPreset;
-                    _currentPresetId = savedPreset.Id;
                 }
                 else
                 {
@@ -1091,6 +1270,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
                     : Presets.FirstOrDefault();
             }
 
+            RebuildPresetItems();
             StatusMessage = Presets.Count == 0
                 ? "Пока нет сохранённых стилей. Настройте оформление и нажмите «Сохранить»."
                 : $"Доступно {Presets.Count} стилей. Выберите стиль или создайте новый.";
@@ -1107,14 +1287,43 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         }
     }
 
+    public void BeginModalEdit()
+    {
+        _isModalEditing = true;
+        _autoSaveTimer.Stop();
+    }
+
+    public void EndModalEdit()
+    {
+        _isModalEditing = false;
+        _currentPresetId = null;
+        _autoSaveTimer.Stop();
+        DeleteCommand.NotifyCanExecuteChanged();
+    }
+
+    public void PrepareCreatePreset()
+    {
+        BeginModalEdit();
+        CreateNew();
+    }
+
+    public void PrepareEditPreset(ThemePreset preset)
+    {
+        BeginModalEdit();
+        LoadPresetIntoEditor(preset);
+    }
+
+    public bool IsEditingExistingPreset => _currentPresetId.HasValue;
+
     private void CreateNew()
     {
         _currentPresetId = null;
         SelectedPreset = null;
-        _autoSaveTimer.Stop(); // Останавливаем автосохранение для нового стиля
+        _autoSaveTimer.Stop();
         ResetToDefaults();
-        StatusMessage = "Новый стиль. Заполните параметры и нажмите «Сохранить», чтобы добавить в список.";
+        StatusMessage = null;
         SaveCommand.NotifyCanExecuteChanged();
+        DeleteCommand.NotifyCanExecuteChanged();
     }
 
     private void EditSelected()
@@ -1124,33 +1333,43 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
             return;
         }
 
-        _currentPresetId = SelectedPreset.Id;
-        PresetName = SelectedPreset.Name;
-        FontFamily = SelectedPreset.FontFamily;
-        IsBold = SelectedPreset.IsBold;
-        TextAlignment = SelectedPreset.TextAlignment ?? "Center";
-        SelectedSectionTransition = SectionTransitionOptions.FirstOrDefault(o => o.Mode == NormalizeTransition(SelectedPreset.SectionTransitionMode))
+        LoadPresetIntoEditor(SelectedPreset);
+    }
+
+    private void LoadPresetIntoEditor(ThemePreset preset)
+    {
+        _currentPresetId = preset.Id;
+        PresetName = preset.Name;
+        FontFamily = preset.FontFamily;
+        IsBold = preset.IsBold;
+        TextAlignment = preset.TextAlignment ?? "Center";
+        SelectedSectionTransition = SectionTransitionOptions.FirstOrDefault(o => o.Mode == NormalizeTransition(preset.SectionTransitionMode))
             ?? SectionTransitionOptions.FirstOrDefault(o => o.Mode == SectionTransitionMode.CrossFade)
             ?? SectionTransitionOptions.FirstOrDefault();
-        PrimaryColor = SelectedPreset.Colors.Primary;
-        BackgroundColor = SelectedPreset.Colors.Background;
-        LoopBackgroundMedia = SelectedPreset.LoopBackgroundMedia;
-        UseSeparateBackgrounds = SelectedPreset.UseSeparateBackgrounds;
-        SelectedBackgroundPickMode = BackgroundPickModeOptions.FirstOrDefault(o => o.Mode == SelectedPreset.BackgroundPickMode)
+        SectionTransitionDurationMs = preset.SectionTransitionDurationMs <= 0
+            ? 750
+            : Math.Clamp(preset.SectionTransitionDurationMs, 150, 3000);
+        UpdateTransitionSpeedVisibility();
+        PrimaryColor = preset.Colors.Primary;
+        BackgroundColor = preset.Colors.Background;
+        LoopBackgroundMedia = preset.LoopBackgroundMedia;
+        UseSeparateBackgrounds = preset.UseSeparateBackgrounds;
+        SelectedBackgroundPickMode = BackgroundPickModeOptions.FirstOrDefault(o => o.Mode == preset.BackgroundPickMode)
             ?? BackgroundPickModeOptions.FirstOrDefault();
-        _selectedSharedWallpaperId = SelectedPreset.SelectedSharedWallpaperId;
-        _selectedSongWallpaperId = SelectedPreset.SelectedSongWallpaperId;
-        _selectedBibleWallpaperId = SelectedPreset.SelectedBibleWallpaperId;
-        _allWallpapers = SelectedPreset.Wallpapers?.ToList() ?? new List<ThemeWallpaper>();
+        _selectedSharedWallpaperId = preset.SelectedSharedWallpaperId;
+        _selectedSongWallpaperId = preset.SelectedSongWallpaperId;
+        _selectedBibleWallpaperId = preset.SelectedBibleWallpaperId;
+        _allWallpapers = preset.Wallpapers?.ToList() ?? new List<ThemeWallpaper>();
         SyncLegacyBackgroundPath();
         RefreshEditingPoolWallpapers();
-        TextOutlineEnabled = SelectedPreset.TextOutlineEnabled;
-        TextOutlineThickness = SelectedPreset.TextOutlineThickness;
-        TextOutlineColor = SelectedPreset.TextOutlineColor ?? "#000000";
-        TextOutlineOpacity = SelectedPreset.TextOutlineOpacity;
+        TextOutlineEnabled = preset.TextOutlineEnabled;
+        TextOutlineThickness = preset.TextOutlineThickness;
+        TextOutlineColor = preset.TextOutlineColor ?? "#000000";
+        TextOutlineOpacity = preset.TextOutlineOpacity;
 
-        StatusMessage = $"Редактирование стиля «{SelectedPreset.Name}». Изменения сохраняются автоматически.";
+        StatusMessage = $"Редактирование стиля «{preset.Name}».";
         SaveCommand.NotifyCanExecuteChanged();
+        DeleteCommand.NotifyCanExecuteChanged();
     }
 
     private void SetTextAlignment(string? alignment)
@@ -1214,10 +1433,16 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
             }
 
             var pool = GetEditingPool();
+            var defaultName = Path.GetFileNameWithoutExtension(importedPath);
+            if (string.IsNullOrWhiteSpace(defaultName))
+            {
+                defaultName = _themeBackgroundMediaService.GetDisplayName(importedPath);
+            }
+
             var wallpaper = await _catalogService.AddThemeWallpaperAsync(
                 _currentPresetId.Value,
                 importedPath,
-                _themeBackgroundMediaService.GetDisplayName(importedPath),
+                defaultName,
                 pool);
 
             _allWallpapers.Add(wallpaper);
@@ -1315,16 +1540,63 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
             return;
         }
 
-        SetSelectedWallpaperId(GetEditingPool(), SelectedWallpaper.Id);
+        SelectWallpaperItemAsFixed(SelectedWallpaper);
+    }
+
+    public void SelectWallpaperItemAsFixed(ThemeWallpaperItem item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+
+        if (!ReferenceEquals(SelectedWallpaper, item))
+        {
+            SelectedWallpaper = item;
+        }
+
+        if (!IsFixedWallpaperPickMode)
+        {
+            return;
+        }
+
+        var pool = GetEditingPool();
+        if (GetSelectedWallpaperId(pool) == item.Id)
+        {
+            // Уже выбран — только подсветим в UI, без ApplyTheme/пересборки
+            UpdateFixedWallpaperSelectionVisuals();
+            return;
+        }
+
+        SetSelectedWallpaperId(pool, item.Id);
         SyncLegacyBackgroundPath();
+        UpdateFixedWallpaperSelectionVisuals();
+
         if (_currentPresetId.HasValue && CanSave())
         {
             _autoSaveTimer.Stop();
-            _autoSaveTimer.Start();
+            _ = PersistWallpaperSelectionAsync();
+        }
+    }
+
+    private async Task PersistWallpaperSelectionAsync()
+    {
+        if (!_currentPresetId.HasValue || !CanSave())
+        {
+            return;
         }
 
-        _projectionDisplayService.ApplyTheme(BuildPresetModel());
-        RefreshEditingPoolWallpapers();
+        try
+        {
+            var savedPreset = await _catalogService.UpsertThemePresetAsync(BuildPresetModel());
+            UpsertPreset(savedPreset);
+            SelectedPreset = Presets.FirstOrDefault(p => p.Id == savedPreset.Id) ?? SelectedPreset;
+            _projectionDisplayService.ApplyTheme(savedPreset);
+            await SaveSelectedThemeToSettingsAsync(savedPreset.Id);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"PersistWallpaperSelectionAsync: {ex.Message}");
+            // Если сохранение не удалось, хотя бы визуально применяем текущий выбор.
+            _projectionDisplayService.ApplyTheme(BuildPresetModel());
+        }
     }
 
     private async Task<string> ImportBackgroundFromStorageFileAsync(global::Windows.Storage.StorageFile file)
@@ -1360,6 +1632,8 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         TextAlignment = "Center";
         SelectedSectionTransition = SectionTransitionOptions.FirstOrDefault(o => o.Mode == SectionTransitionMode.CrossFade)
             ?? SectionTransitionOptions.FirstOrDefault();
+        SectionTransitionDurationMs = 750;
+        UpdateTransitionSpeedVisibility();
         PrimaryColor = ThemeColors.Default.Primary;
         BackgroundColor = ThemeColors.Default.Background;
         BackgroundMediaPath = string.Empty;
@@ -1391,19 +1665,113 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
                TryParseColor(TextOutlineColor);
     }
 
+    /// <summary>
+    /// Возвращает актуальный пресет для проекции из редактора настроек.
+    /// Нужен, чтобы запуск трансляции брал текущий выбранный фон сразу,
+    /// даже если autosave/DB ещё не успели обновиться.
+    /// </summary>
+    public ThemePreset? GetCurrentProjectionTheme()
+    {
+        if (!CanSave())
+        {
+            return SelectedPreset;
+        }
+
+        if (_currentPresetId.HasValue)
+        {
+            return BuildPresetModel();
+        }
+
+        return SelectedPreset;
+    }
+
     partial void OnSelectedPresetChanged(ThemePreset? value)
     {
         EditCommand.NotifyCanExecuteChanged();
         DeleteCommand.NotifyCanExecuteChanged();
-        
-        // При выборе стиля автоматически открываем его для редактирования
-        if (value is not null)
-        {
-            EditSelected();
-        }
-        
-        // Сохраняем выбранный стиль в настройки и применяем его
+        SyncPresetItemSelection();
+
         _ = SaveSelectedThemeToSettingsAsync(value?.Id);
+
+        if (value is not null && !_isModalEditing)
+        {
+            _projectionDisplayService.ApplyTheme(value);
+        }
+    }
+
+    public void SelectPresetItem(ThemePresetListItem item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        if (SelectedPreset?.Id == item.Id)
+        {
+            SyncPresetItemSelection();
+            return;
+        }
+
+        SelectedPreset = item.Preset;
+    }
+
+    private void RebuildPresetItems()
+    {
+        var selectedId = SelectedPreset?.Id;
+        PresetItems.Clear();
+        foreach (var preset in Presets)
+        {
+            PresetItems.Add(new ThemePresetListItem(preset)
+            {
+                IsSelected = selectedId.HasValue && preset.Id == selectedId.Value
+            });
+        }
+    }
+
+    private void SyncPresetItemSelection()
+    {
+        var selectedId = SelectedPreset?.Id;
+        foreach (var item in PresetItems)
+        {
+            item.IsSelected = selectedId.HasValue && item.Id == selectedId.Value;
+        }
+    }
+
+    private void UpsertPreset(ThemePreset preset)
+    {
+        var existing = Presets.FirstOrDefault(p => p.Id == preset.Id);
+        if (existing is not null)
+        {
+            var index = Presets.IndexOf(existing);
+            Presets[index] = preset;
+        }
+        else
+        {
+            Presets.Add(preset);
+        }
+
+        SortPresets();
+        RebuildPresetItems();
+        SyncPresetItemSelection();
+    }
+
+    private void SortPresets()
+    {
+        if (Presets.Count <= 1)
+        {
+            return;
+        }
+
+        var ordered = Presets
+            .OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+
+        if (ordered.SequenceEqual(Presets))
+        {
+            return;
+        }
+
+        Presets.Clear();
+        foreach (var preset in ordered)
+        {
+            Presets.Add(preset);
+        }
     }
 
     private async Task SaveSelectedThemeToSettingsAsync(Guid? themePresetId)
@@ -1473,6 +1841,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
             // Новый или обновлённый стиль сразу применяем к проекции при сохранении.
             _projectionDisplayService.ApplyTheme(savedPreset);
             await SaveSelectedThemeToSettingsAsync(savedPreset.Id);
+            ThemePresetSaved?.Invoke(this, savedPreset);
         }
         catch (Exception ex)
         {
@@ -1490,7 +1859,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
 
     private async Task AutoSaveAsync()
     {
-        if (!CanSave() || !_currentPresetId.HasValue || IsBusy)
+        if (_isModalEditing || !CanSave() || !_currentPresetId.HasValue || IsBusy)
         {
             return;
         }
@@ -1525,6 +1894,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
             IsBold = IsBold,
             TextAlignment = string.IsNullOrWhiteSpace(TextAlignment) ? "Center" : TextAlignment,
             SectionTransitionMode = SelectedSectionTransition?.Mode ?? SectionTransitionMode.CrossFade,
+            SectionTransitionDurationMs = (int)Math.Clamp(SectionTransitionDurationMs, 150, 3000),
             Colors = new ThemeColors(
                 PrimaryColor,
                 BackgroundColor),
@@ -1545,26 +1915,35 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
 
     private async Task DeleteAsync()
     {
-        if (SelectedPreset is null || XamlRoot is null)
+        if (!_currentPresetId.HasValue || XamlRoot is null)
         {
             return;
         }
 
-        // Показываем диалог подтверждения
-        var dialog = new ContentDialog
-        {
-            Title = "Удаление стиля",
-            Content = $"Вы уверены, что хотите удалить стиль «{SelectedPreset.Name}»?",
-            PrimaryButtonText = "Удалить",
-            SecondaryButtonText = "Отмена",
-            XamlRoot = XamlRoot,
-            DefaultButton = ContentDialogButton.Secondary
-        };
-
-        var result = await dialog.ShowAsync();
-        if (result != ContentDialogResult.Primary)
+        var preset = Presets.FirstOrDefault(p => p.Id == _currentPresetId.Value);
+        if (preset is null)
         {
             return;
+        }
+
+        // В модалке редактора уже нажали «Удалить» — второй ContentDialog поверх не открывается в WinUI.
+        if (!_isModalEditing)
+        {
+            var dialog = new ContentDialog
+            {
+                Title = "Удаление стиля",
+                Content = $"Вы уверены, что хотите удалить стиль «{preset.Name}»?",
+                PrimaryButtonText = "Удалить",
+                SecondaryButtonText = "Отмена",
+                XamlRoot = XamlRoot,
+                DefaultButton = ContentDialogButton.Secondary
+            };
+
+            var result = await dialog.ShowAsync();
+            if (result != ContentDialogResult.Primary)
+            {
+                return;
+            }
         }
 
         try
@@ -1573,14 +1952,14 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
             SaveCommand.NotifyCanExecuteChanged();
             DeleteCommand.NotifyCanExecuteChanged();
 
-            StatusMessage = $"Удаляем стиль «{SelectedPreset.Name}»...";
+            StatusMessage = $"Удаляем стиль «{preset.Name}»...";
 
-            var removedId = SelectedPreset.Id;
-            var mediaPaths = (SelectedPreset.Wallpapers ?? Array.Empty<ThemeWallpaper>())
+            var removedId = preset.Id;
+            var mediaPaths = (preset.Wallpapers ?? Array.Empty<ThemeWallpaper>())
                 .Select(w => w.FilePath)
-                .Concat(string.IsNullOrWhiteSpace(SelectedPreset.BackgroundMediaPath)
+                .Concat(string.IsNullOrWhiteSpace(preset.BackgroundMediaPath)
                     ? Array.Empty<string>()
-                    : new[] { SelectedPreset.BackgroundMediaPath })
+                    : new[] { preset.BackgroundMediaPath })
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
             await _catalogService.RemoveThemePresetAsync(removedId);
@@ -1589,23 +1968,17 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
                 _themeBackgroundMediaService.TryDeleteManaged(mediaPath);
             }
 
-            var index = Presets.IndexOf(SelectedPreset);
-            Presets.Remove(SelectedPreset);
+            var index = Presets.IndexOf(preset);
+            Presets.Remove(preset);
+            RebuildPresetItems();
 
             SelectedPreset = index < Presets.Count
                 ? Presets[index]
                 : Presets.LastOrDefault();
 
-            if (SelectedPreset is null)
-            {
-                CreateNew();
-            }
-            else
-            {
-                _currentPresetId = null;
-            }
-
+            _currentPresetId = null;
             StatusMessage = "Стиль удалён.";
+            ThemePresetDeleted?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception ex)
         {
@@ -1617,45 +1990,6 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
             IsBusy = false;
             SaveCommand.NotifyCanExecuteChanged();
             DeleteCommand.NotifyCanExecuteChanged();
-        }
-    }
-
-    private void UpsertPreset(ThemePreset preset)
-    {
-        var existing = Presets.FirstOrDefault(p => p.Id == preset.Id);
-        if (existing is not null)
-        {
-            var index = Presets.IndexOf(existing);
-            Presets[index] = preset;
-        }
-        else
-        {
-            Presets.Add(preset);
-        }
-
-        SortPresets();
-    }
-
-    private void SortPresets()
-    {
-        if (Presets.Count <= 1)
-        {
-            return;
-        }
-
-        var ordered = Presets
-            .OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase)
-            .ToList();
-
-        if (ordered.SequenceEqual(Presets))
-        {
-            return;
-        }
-
-        Presets.Clear();
-        foreach (var preset in ordered)
-        {
-            Presets.Add(preset);
         }
     }
 

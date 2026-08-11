@@ -9,7 +9,8 @@ public enum AppHotkeyAction
     StartShow,
     EndShow,
     NextSlide,
-    PreviousSlide
+    PreviousSlide,
+    FocusBibleSearch
 }
 
 public sealed class HotkeyBinding : IEquatable<HotkeyBinding>
@@ -28,6 +29,7 @@ public sealed class HotkeyBinding : IEquatable<HotkeyBinding>
         AppHotkeyAction.EndShow => Create(VirtualKey.Escape),
         AppHotkeyAction.NextSlide => Create(VirtualKey.Right),
         AppHotkeyAction.PreviousSlide => Create(VirtualKey.Left),
+        AppHotkeyAction.FocusBibleSearch => Create(VirtualKey.F4),
         _ => Create(VirtualKey.None)
     };
 
@@ -37,6 +39,7 @@ public sealed class HotkeyBinding : IEquatable<HotkeyBinding>
         AppHotkeyAction.EndShow => "Завершить показ",
         AppHotkeyAction.NextSlide => "Следующий слайд",
         AppHotkeyAction.PreviousSlide => "Предыдущий слайд",
+        AppHotkeyAction.FocusBibleSearch => "Поиск в текущем разделе",
         _ => action.ToString()
     };
 
@@ -46,6 +49,7 @@ public sealed class HotkeyBinding : IEquatable<HotkeyBinding>
         AppHotkeyAction.EndShow => "Закрывает окно трансляции.",
         AppHotkeyAction.NextSlide => "Следующий слайд; у песни на последнем — закрывает показ; у Библии — следующая глава.",
         AppHotkeyAction.PreviousSlide => "Переключает на предыдущий слайд или песню.",
+        AppHotkeyAction.FocusBibleSearch => "Ставит курсор в поиск на текущей странице: Песни или Библия.",
         _ => string.Empty
     };
 

@@ -750,7 +750,7 @@ public sealed class DisplaySettingsService : IDisplaySettingsService
             }
             
             settings[WordWrapKey] = wordWrap.ToString();
-            settings[TextLayoutModeKey] = (wordWrap ? TextLayoutMode.MaximizeFont : TextLayoutMode.ShrinkToFit).ToString();
+            settings[TextLayoutModeKey] = (wordWrap ? TextLayoutMode.AutoMaxFit : TextLayoutMode.ShrinkToFit).ToString();
             
             // Сохраняем настройки в файл
             var options = new JsonSerializerOptions { WriteIndented = true };
@@ -785,7 +785,7 @@ public sealed class DisplaySettingsService : IDisplaySettingsService
             }
 
             if (settings.TryGetValue(TextLayoutModeKey, out var modeStr)
-                && Enum.TryParse<TextLayoutMode>(modeStr, ignoreCase: true, out var mode))
+                && TryNormalizeTextLayoutMode(modeStr, out var mode))
             {
                 return mode;
             }
@@ -794,7 +794,7 @@ public sealed class DisplaySettingsService : IDisplaySettingsService
             if (settings.TryGetValue(WordWrapKey, out var wordWrapStr)
                 && bool.TryParse(wordWrapStr, out var wordWrap))
             {
-                return wordWrap ? TextLayoutMode.MaximizeFont : TextLayoutMode.ShrinkToFit;
+                return wordWrap ? TextLayoutMode.AutoMaxFit : TextLayoutMode.ShrinkToFit;
             }
         }
         catch (Exception ex)
@@ -1198,6 +1198,7 @@ public sealed class DisplaySettingsService : IDisplaySettingsService
     }
 
     private const string ShowBibleReferenceKey = "ShowBibleReference";
+    private const string KeepProjectionBackgroundKey = "KeepProjectionBackground";
     private const string BibleReferencePlacementKey = "BibleReferencePlacement";
     private const string BibleReferenceAlignmentKey = "BibleReferenceAlignment";
 
@@ -1210,6 +1211,17 @@ public sealed class DisplaySettingsService : IDisplaySettingsService
     public async Task SetShowBibleReferenceAsync(bool show)
     {
         await WriteSettingAsync(ShowBibleReferenceKey, show.ToString()).ConfigureAwait(false);
+    }
+
+    public async Task<bool> GetKeepProjectionBackgroundAsync()
+    {
+        var raw = await ReadSettingAsync(KeepProjectionBackgroundKey).ConfigureAwait(false);
+        return bool.TryParse(raw, out var value) && value;
+    }
+
+    public async Task SetKeepProjectionBackgroundAsync(bool keep)
+    {
+        await WriteSettingAsync(KeepProjectionBackgroundKey, keep.ToString()).ConfigureAwait(false);
     }
 
     public async Task<BibleReferencePlacement> GetBibleReferencePlacementAsync()
@@ -1306,6 +1318,36 @@ public sealed class DisplaySettingsService : IDisplaySettingsService
         }
 
         return Task.CompletedTask;
+    }
+
+    private static bool TryNormalizeTextLayoutMode(string? raw, out TextLayoutMode mode)
+    {
+        mode = TextLayoutMode.AutoMaxFit;
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return false;
+        }
+
+        var normalized = raw.Trim();
+        if (normalized.Equals("ShrinkToFit", StringComparison.OrdinalIgnoreCase)
+            || normalized == "2"
+            || normalized == "1")
+        {
+            mode = TextLayoutMode.ShrinkToFit;
+            return true;
+        }
+
+        if (normalized.Equals("AutoMaxFit", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("MaximizeFont", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("WrapToWidth", StringComparison.OrdinalIgnoreCase)
+            || normalized == "0"
+            || normalized == "3")
+        {
+            mode = TextLayoutMode.AutoMaxFit;
+            return true;
+        }
+
+        return false;
     }
 }
 

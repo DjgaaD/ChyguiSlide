@@ -20,6 +20,8 @@ public partial class BibleViewModel : ObservableObject
     private readonly IServiceProvider _services;
     private readonly List<BibleBook> _allBooks = new();
     private bool _suppressAutoChapterSelect;
+    private bool _pendingSearchFocusRequest;
+    public event Action? SearchFocusRequested;
 
     public BibleViewModel(IBibleService bibleService, IServiceProvider services)
     {
@@ -528,6 +530,23 @@ public partial class BibleViewModel : ObservableObject
         }
 
         await StartProjectionAsync();
+    }
+
+    public void RequestSearchFocus()
+    {
+        _pendingSearchFocusRequest = true;
+        SearchFocusRequested?.Invoke();
+    }
+
+    public bool ConsumePendingSearchFocusRequest()
+    {
+        if (!_pendingSearchFocusRequest)
+        {
+            return false;
+        }
+
+        _pendingSearchFocusRequest = false;
+        return true;
     }
 
     private static Song BuildEphemeralSong(string title, BibleBook book, IReadOnlyList<BibleVerse> passage)

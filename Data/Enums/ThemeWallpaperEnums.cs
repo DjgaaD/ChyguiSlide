@@ -14,5 +14,7 @@ public enum ThemeBackgroundPickMode
     /// <summary>Конкретный выбранный файл.</summary>
     Fixed = 0,
     /// <summary>Случайный при каждом запуске трансляции (и при смене пула песни/Библия).</summary>
-    RandomOnStart = 1
+    RandomOnStart = 1,
+    /// <summary>Только сплошной цвет фона стиля, без медиа.</summary>
+    SolidColor = 2
 }

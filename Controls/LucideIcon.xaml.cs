@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using System.Xml.Linq;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Markup;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Shapes;
@@ -174,6 +175,11 @@ public sealed partial class LucideIcon : UserControl
             shape.StrokeLineJoin = PenLineJoin.Round;
             shape.Fill = null;
             shape.IsHitTestVisible = false;
+            shape.SetBinding(Shape.StrokeProperty, new Binding
+            {
+                Source = this,
+                Path = new PropertyPath(nameof(Foreground))
+            });
             IconCanvas.Children.Add(shape);
         }
     }
@@ -185,24 +191,8 @@ public sealed partial class LucideIcon : UserControl
             return;
         }
 
-        Brush brush;
-        if (Foreground is Brush fg)
-        {
-            brush = fg;
-        }
-        else if (Application.Current.Resources.TryGetValue("TextFillColorPrimaryBrush", out var resource)
-                 && resource is Brush themeBrush)
-        {
-            brush = themeBrush;
-        }
-        else
-        {
-            brush = new SolidColorBrush(Microsoft.UI.Colors.Black);
-        }
-
         foreach (var child in IconCanvas.Children.OfType<Shape>())
         {
-            child.Stroke = brush;
             child.StrokeThickness = StrokeWidth;
         }
     }

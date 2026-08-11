@@ -32,8 +32,13 @@ public sealed partial class ProjectionWindow : Window
         ViewModel = viewModel;
         ProjectionRoot.DataContext = ViewModel;
 
-        _transitionPlayer = new ProjectionTransitionPlayer(OutgoingSlideLayer, IncomingSlideLayer);
-        ViewModel.SetTransitionPlayer(_transitionPlayer.PlayAsync);
+        _transitionPlayer = new ProjectionTransitionPlayer(
+            IncomingSlideLayer,
+            OutgoingSlideLayer);
+        ViewModel.SetTransitionPlayer(
+            (mode, apply) =>
+                _transitionPlayer.PlayAsync(mode, apply, ViewModel.SectionTransitionDurationMs),
+            () => _transitionPlayer.ResetVisualState());
 
         ProjectionRoot.SizeChanged += OnProjectionRootSizeChanged;
         Closed += (_, _) => ViewModel.SetTransitionPlayer(null);

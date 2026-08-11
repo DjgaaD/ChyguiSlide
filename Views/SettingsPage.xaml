@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="UTF-8" ?>
+<?xml version="1.0" encoding="UTF-8" ?>
 <Page
     x:Class="ChyguiSlide.Views.SettingsPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -10,6 +10,7 @@
     xmlns:models="using:ChyguiSlide.Data.Entities"
     xmlns:vm="using:ChyguiSlide.ViewModels"
     xmlns:icons="using:ChyguiSlide.Controls"
+    xmlns:preview="using:ChyguiSlide.Controls"
     mc:Ignorable="d">
 
     <Page.Resources>
@@ -78,34 +79,6 @@
                             Padding="20">
                             <StackPanel Spacing="16">
                                 <StackPanel Spacing="4">
-                                    <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Тема интерфейса" />
-                                    <TextBlock
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        TextWrapping="Wrap"
-                                        Text="Светлая или тёмная тема окон программы (не фон трансляции)." />
-                                </StackPanel>
-                                <ComboBox
-                                    Header="Тема"
-                                    HorizontalAlignment="Stretch"
-                                    ItemsSource="{Binding AppUiThemeOptions}"
-                                    SelectedItem="{Binding SelectedAppUiTheme, Mode=TwoWay}"
-                                    DisplayMemberPath="Title" />
-                                <TextBlock
-                                    FontSize="12"
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    Text="{Binding SelectedAppUiTheme.Description}"
-                                    TextWrapping="Wrap" />
-                            </StackPanel>
-                        </Border>
-
-                        <Border
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="1"
-                            CornerRadius="12"
-                            Padding="20">
-                            <StackPanel Spacing="16">
-                                <StackPanel Spacing="4">
                                     <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Экран трансляции" />
                                     <TextBlock
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -133,6 +106,26 @@
                                         VerticalAlignment="Center"
                                         IsActive="{Binding IsLoadingDisplays}" />
                                 </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <Border
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="12"
+                            Padding="20">
+                            <StackPanel Spacing="12">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Постоянный фон" />
+                                    <TextBlock
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        TextWrapping="Wrap"
+                                        Text="Окно проекции остаётся открытым с фоном стиля. Текст появляется при показе и исчезает при завершении; рабочий стол не виден." />
+                                </StackPanel>
+                                <CheckBox
+                                    Content="Держать фон на экране"
+                                    IsChecked="{Binding KeepProjectionBackground, Mode=TwoWay}" />
                             </StackPanel>
                         </Border>
 
@@ -181,17 +174,9 @@
                                                         <Grid.RowDefinitions>
                                                             <RowDefinition Height="Auto" />
                                                             <RowDefinition Height="*" />
-                                                            <RowDefinition Height="Auto" />
                                                         </Grid.RowDefinitions>
 
-                                                        <StackPanel Grid.Row="0" Spacing="2">
-                                                            <TextBlock FontWeight="SemiBold" Text="{x:Bind Title}" TextWrapping="Wrap" />
-                                                            <TextBlock
-                                                                FontSize="12"
-                                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                                Text="{x:Bind Description}"
-                                                                TextWrapping="Wrap" />
-                                                        </StackPanel>
+                                                        <TextBlock Grid.Row="0" FontWeight="SemiBold" Text="{x:Bind Title}" TextWrapping="Wrap" />
 
                                                         <Border
                                                             Grid.Row="1"
@@ -238,13 +223,6 @@
                                                                     Visibility="{x:Bind ShowExtraLines, Converter={StaticResource BoolToVisibilityConverter}}" />
                                                             </StackPanel>
                                                         </Border>
-
-                                                        <icons:LucideIcon
-                                                            Grid.Row="2"
-                                                            Kind="check"
-                                                            Size="16"
-                                                            HorizontalAlignment="Right"
-                                                            Visibility="{x:Bind IsSelected, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
                                                     </Grid>
                                                 </Border>
                                             </Button>
@@ -321,306 +299,138 @@
                     </StackPanel>
 
                     <!-- Стили -->
-                    <Grid
-                        ColumnSpacing="20"
+                    <StackPanel
+                        Spacing="16"
                         Visibility="{Binding IsThemesSectionVisible, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="280" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-
                         <Border
-                            Grid.Column="0"
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="1"
-                            CornerRadius="12"
-                            Padding="16">
-                            <StackPanel Spacing="12">
-                                <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Стили оформления" />
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <Button Command="{Binding CreateCommand}" ToolTipService.ToolTip="Создать стиль">
-                                        <icons:LucideIcon Kind="plus" Size="18" />
-                                    </Button>
-                                    <Button
-                                        Command="{Binding SaveCommand}"
-                                        Style="{StaticResource AccentButtonStyle}"
-                                        ToolTipService.ToolTip="Сохранить стиль">
-                                        <icons:LucideIcon Kind="save" Size="18" />
-                                    </Button>
-                                    <Button Command="{Binding DeleteCommand}" ToolTipService.ToolTip="Удалить стиль">
-                                        <icons:LucideIcon Kind="trash-2" Size="18" />
-                                    </Button>
-                                </StackPanel>
-                                <ListView
-                                    ItemsSource="{Binding Presets}"
-                                    SelectedItem="{Binding SelectedPreset, Mode=TwoWay}"
-                                    SelectionMode="Single"
-                                    MaxHeight="420">
-                                    <ListView.ItemTemplate>
-                                        <DataTemplate x:DataType="models:ThemePreset">
-                                            <TextBlock Text="{x:Bind Name}" Padding="0,4" />
-                                        </DataTemplate>
-                                    </ListView.ItemTemplate>
-                                </ListView>
-                            </StackPanel>
-                        </Border>
-
-                        <Border
-                            Grid.Column="1"
                             Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                             BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                             BorderThickness="1"
                             CornerRadius="12"
                             Padding="20">
-                            <StackPanel Spacing="16">
-                                <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Редактор стиля" />
-                                <Grid ColumnSpacing="16" RowSpacing="12">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel Grid.Column="0" Spacing="12">
-                                        <TextBox Header="Название" Text="{Binding PresetName, Mode=TwoWay}" />
-                                        <TextBox
-                                            Header="Шрифт"
-                                            PlaceholderText="Segoe UI"
-                                            Text="{Binding FontFamily, Mode=TwoWay}" />
-                                        <ToggleSwitch
-                                            Header="Жирный шрифт"
-                                            OffContent="Обычный"
-                                            OnContent="Жирный"
-                                            IsOn="{Binding IsBold, Mode=TwoWay}" />
-                                        <StackPanel Spacing="8">
-                                            <TextBlock Text="Выравнивание" Style="{ThemeResource CaptionTextBlockStyle}" />
-                                            <StackPanel Orientation="Horizontal" Spacing="4">
-                                                <Button
-                                                    Width="40"
-                                                    Height="40"
-                                                    Padding="0"
-                                                    CornerRadius="4"
-                                                    ToolTipService.ToolTip="По левому краю"
-                                                    Command="{Binding SetTextAlignmentCommand}"
-                                                    CommandParameter="Left"
-                                                    Background="{Binding TextAlignment, Converter={StaticResource TextAlignmentToBrushConverter}, ConverterParameter=Left}"
-                                                    BorderBrush="{Binding TextAlignment, Converter={StaticResource TextAlignmentToBorderBrushConverter}, ConverterParameter=Left}"
-                                                    BorderThickness="{Binding TextAlignment, Converter={StaticResource TextAlignmentToBorderThicknessConverter}, ConverterParameter=Left}">
-                                                    <icons:LucideIcon Kind="text-align-start" Size="18" />
-                                                </Button>
-                                                <Button
-                                                    Width="40"
-                                                    Height="40"
-                                                    Padding="0"
-                                                    CornerRadius="4"
-                                                    ToolTipService.ToolTip="По центру"
-                                                    Command="{Binding SetTextAlignmentCommand}"
-                                                    CommandParameter="Center"
-                                                    Background="{Binding TextAlignment, Converter={StaticResource TextAlignmentToBrushConverter}, ConverterParameter=Center}"
-                                                    BorderBrush="{Binding TextAlignment, Converter={StaticResource TextAlignmentToBorderBrushConverter}, ConverterParameter=Center}"
-                                                    BorderThickness="{Binding TextAlignment, Converter={StaticResource TextAlignmentToBorderThicknessConverter}, ConverterParameter=Center}">
-                                                    <icons:LucideIcon Kind="text-align-center" Size="18" />
-                                                </Button>
-                                                <Button
-                                                    Width="40"
-                                                    Height="40"
-                                                    Padding="0"
-                                                    CornerRadius="4"
-                                                    ToolTipService.ToolTip="По правому краю"
-                                                    Command="{Binding SetTextAlignmentCommand}"
-                                                    CommandParameter="Right"
-                                                    Background="{Binding TextAlignment, Converter={StaticResource TextAlignmentToBrushConverter}, ConverterParameter=Right}"
-                                                    BorderBrush="{Binding TextAlignment, Converter={StaticResource TextAlignmentToBorderBrushConverter}, ConverterParameter=Right}"
-                                                    BorderThickness="{Binding TextAlignment, Converter={StaticResource TextAlignmentToBorderThicknessConverter}, ConverterParameter=Right}">
-                                                    <icons:LucideIcon Kind="text-align-end" Size="18" />
-                                                </Button>
-                                            </StackPanel>
-                                        </StackPanel>
-                                        <ComboBox
-                                            Header="Анимация смены слайда"
-                                            HorizontalAlignment="Stretch"
-                                            ItemsSource="{Binding SectionTransitionOptions}"
-                                            SelectedItem="{Binding SelectedSectionTransition, Mode=TwoWay}"
-                                            DisplayMemberPath="Title" />
-                                        <TextBlock
-                                            FontSize="12"
-                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                            Text="{Binding SelectedSectionTransition.Description}"
-                                            TextWrapping="Wrap" />
-                                        <StackPanel Spacing="8">
-                                            <TextBlock Text="Обои (MP4 / изображение)" />
-                                            <ToggleSwitch
-                                                Header="Отдельные обои для песен и Библии"
-                                                IsOn="{Binding UseSeparateBackgrounds, Mode=TwoWay}" />
-                                            <ComboBox
-                                                Header="Как выбирать фон"
-                                                HorizontalAlignment="Stretch"
-                                                ItemsSource="{Binding BackgroundPickModeOptions}"
-                                                SelectedItem="{Binding SelectedBackgroundPickMode, Mode=TwoWay}"
-                                                DisplayMemberPath="Title" />
-                                            <TextBlock
-                                                FontSize="12"
-                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                Text="{Binding SelectedBackgroundPickMode.Description}"
-                                                TextWrapping="Wrap" />
-                                            <ComboBox
-                                                Header="Набор обоев"
-                                                HorizontalAlignment="Stretch"
-                                                ItemsSource="{Binding WallpaperPoolOptions}"
-                                                SelectedItem="{Binding SelectedWallpaperPool, Mode=TwoWay}"
-                                                DisplayMemberPath="Title"
-                                                Visibility="{Binding IsWallpaperPoolSelectorVisible, Converter={StaticResource BoolToVisibilityConverter}}" />
-                                            <ListView
-                                                MinHeight="120"
-                                                MaxHeight="200"
-                                                ItemsSource="{Binding EditingPoolWallpapers}"
-                                                SelectedItem="{Binding SelectedWallpaper, Mode=TwoWay}"
-                                                SelectionMode="Single">
-                                                <ListView.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <TextBlock Text="{Binding DisplayName}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
-                                                    </DataTemplate>
-                                                </ListView.ItemTemplate>
-                                            </ListView>
-                                            <TextBlock
-                                                FontSize="12"
-                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                                Text="{Binding WallpaperEmptyHint}"
-                                                Visibility="{Binding IsEditingPoolEmpty, Converter={StaticResource BoolToVisibilityConverter}}" />
-                                            <Grid ColumnSpacing="8">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="*" />
-                                                </Grid.ColumnDefinitions>
-                                                <Button
-                                                    HorizontalAlignment="Stretch"
-                                                    Content="Добавить…"
-                                                    Command="{Binding AddWallpaperCommand}" />
-                                                <Button
-                                                    Grid.Column="1"
-                                                    HorizontalAlignment="Stretch"
-                                                    Content="Удалить"
-                                                    Command="{Binding RemoveWallpaperCommand}" />
-                                                <Button
-                                                    Grid.Column="2"
-                                                    HorizontalAlignment="Stretch"
-                                                    Content="Выбрать"
-                                                    Command="{Binding SelectWallpaperAsFixedCommand}"
-                                                    Visibility="{Binding IsFixedWallpaperPickMode, Converter={StaticResource BoolToVisibilityConverter}}" />
-                                            </Grid>
-                                        </StackPanel>
-                                        <ToggleSwitch
-                                            Header="Циклическое воспроизведение фона"
-                                            IsOn="{Binding LoopBackgroundMedia, Mode=TwoWay}" />
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="1" Spacing="12">
-                                        <Grid ColumnSpacing="8">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <TextBox Header="Цвет текста" Text="{Binding PrimaryColor, Mode=TwoWay}" />
-                                            <Button
-                                                Grid.Column="1"
-                                                Width="40"
-                                                Height="32"
-                                                Margin="0,24,0,0"
-                                                Padding="0"
-                                                VerticalAlignment="Top"
-                                                Background="{Binding PrimaryColor, Converter={StaticResource HexToBrushConverter}}"
-                                                BorderBrush="{ThemeResource StrokeColorDefaultBrush}"
-                                                BorderThickness="1"
-                                                CornerRadius="4"
-                                                Click="OnPickPrimaryColorClicked"
-                                                ToolTipService.ToolTip="Палитра" />
-                                        </Grid>
-                                        <Grid ColumnSpacing="8">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <TextBox Header="Фоновый цвет" Text="{Binding BackgroundColor, Mode=TwoWay}" />
-                                            <Button
-                                                Grid.Column="1"
-                                                Width="40"
-                                                Height="32"
-                                                Margin="0,24,0,0"
-                                                Padding="0"
-                                                VerticalAlignment="Top"
-                                                Background="{Binding BackgroundColor, Converter={StaticResource HexToBrushConverter}}"
-                                                BorderBrush="{ThemeResource StrokeColorDefaultBrush}"
-                                                BorderThickness="1"
-                                                CornerRadius="4"
-                                                Click="OnPickBackgroundColorClicked"
-                                                ToolTipService.ToolTip="Палитра" />
-                                        </Grid>
-                                        <ToggleSwitch Header="Обводка текста" IsOn="{Binding TextOutlineEnabled, Mode=TwoWay}" />
-                                        <NumberBox
-                                            Header="Размер обводки"
-                                            Minimum="0"
-                                            Maximum="20"
-                                            SmallChange="0.5"
-                                            LargeChange="1"
-                                            SpinButtonPlacementMode="Inline"
-                                            Value="{Binding TextOutlineThickness, Mode=TwoWay}"
-                                            IsEnabled="{Binding TextOutlineEnabled}" />
-                                        <Grid ColumnSpacing="8">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <TextBox
-                                                Header="Цвет обводки"
-                                                Text="{Binding TextOutlineColor, Mode=TwoWay}"
-                                                IsEnabled="{Binding TextOutlineEnabled}" />
-                                            <Button
-                                                Grid.Column="1"
-                                                Width="40"
-                                                Height="32"
-                                                Margin="0,24,0,0"
-                                                Padding="0"
-                                                VerticalAlignment="Top"
-                                                Background="{Binding TextOutlineColor, Converter={StaticResource HexToBrushConverter}}"
-                                                BorderBrush="{ThemeResource StrokeColorDefaultBrush}"
-                                                BorderThickness="1"
-                                                CornerRadius="4"
-                                                IsEnabled="{Binding TextOutlineEnabled}"
-                                                Click="OnPickOutlineColorClicked"
-                                                ToolTipService.ToolTip="Палитра" />
-                                        </Grid>
-                                        <StackPanel Spacing="4">
-                                            <TextBlock Text="Прозрачность контура" />
-                                            <Slider
-                                                Minimum="0"
-                                                Maximum="100"
-                                                StepFrequency="1"
-                                                Value="{Binding TextOutlineOpacityPercent, Mode=TwoWay}"
-                                                IsEnabled="{Binding TextOutlineEnabled}" />
-                                        </StackPanel>
-                                        <Border
-                                            Background="{Binding BackgroundColor, Converter={StaticResource HexToBrushConverter}}"
-                                            BorderBrush="{ThemeResource StrokeColorDefaultBrush}"
-                                            BorderThickness="1"
-                                            CornerRadius="12"
-                                            Padding="20"
-                                            MinHeight="140">
-                                            <StackPanel Spacing="8">
-                                                <TextBlock
-                                                    Style="{StaticResource SubtitleTextBlockStyle}"
-                                                    Foreground="{Binding PrimaryColor, Converter={StaticResource HexToBrushConverter}}"
-                                                    Text="{Binding PresetName}" />
-                                                <TextBlock
-                                                    FontSize="16"
-                                                    Foreground="{Binding PrimaryColor, Converter={StaticResource HexToBrushConverter}}"
-                                                    TextWrapping="Wrap"
-                                                    Text="Господь — свет мой и спасение моё." />
-                                            </StackPanel>
-                                        </Border>
-                                    </StackPanel>
-                                </Grid>
+                            <StackPanel Spacing="12">
+                                <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Тема интерфейса" />
+                                <ComboBox
+                                    Header="Тема"
+                                    HorizontalAlignment="Stretch"
+                                    MaxWidth="360"
+                                    ItemsSource="{Binding AppUiThemeOptions}"
+                                    SelectedItem="{Binding SelectedAppUiTheme, Mode=TwoWay}"
+                                    DisplayMemberPath="Title" />
                             </StackPanel>
                         </Border>
-                    </Grid>
+
+                        <Grid>
+                            <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Стили оформления" VerticalAlignment="Center" />
+                            <Button
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Top"
+                                Click="OnCreatePresetClicked"
+                                ToolTipService.ToolTip="Создать стиль">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <icons:LucideIcon Kind="plus" Size="18" />
+                                    <TextBlock Text="Новый стиль" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+
+                        <GridView
+                            ItemsSource="{Binding PresetItems}"
+                            SelectionMode="None"
+                            IsItemClickEnabled="False">
+                            <GridView.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <ItemsWrapGrid Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </GridView.ItemsPanel>
+                            <GridView.ItemContainerStyle>
+                                <Style TargetType="GridViewItem">
+                                    <Setter Property="Margin" Value="0,0,16,16" />
+                                    <Setter Property="Padding" Value="0" />
+                                    <Setter Property="MinWidth" Value="0" />
+                                    <Setter Property="Background" Value="Transparent" />
+                                    <Setter Property="BorderThickness" Value="0" />
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                                    <Setter Property="VerticalContentAlignment" Value="Top" />
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="GridViewItem">
+                                                <ContentPresenter
+                                                    Content="{TemplateBinding Content}"
+                                                    ContentTemplate="{TemplateBinding ContentTemplate}"
+                                                    HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                                    VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </GridView.ItemContainerStyle>
+                            <GridView.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ThemePresetListItem">
+                                    <StackPanel
+                                        Width="300"
+                                        Spacing="8"
+                                        PointerEntered="OnPresetPreviewPointerEntered"
+                                        PointerExited="OnPresetPreviewPointerExited">
+                                        <Border
+                                            Height="168"
+                                            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                            BorderBrush="{Binding IsSelected, Converter={StaticResource BoolToAccentBorderBrushConverter}}"
+                                            BorderThickness="{Binding IsSelected, Converter={StaticResource BoolToAccentBorderThicknessConverter}}"
+                                            CornerRadius="12"
+                                            Tapped="OnPresetPreviewTapped">
+                                            <Grid>
+                                                <preview:ThemePresetPreviewCard DataContext="{Binding}" />
+                                                <Border
+                                                    Width="26"
+                                                    Height="26"
+                                                    Margin="8"
+                                                    HorizontalAlignment="Right"
+                                                    VerticalAlignment="Top"
+                                                    Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                                    CornerRadius="13"
+                                                    Visibility="{Binding IsSelected, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                    <FontIcon
+                                                        HorizontalAlignment="Center"
+                                                        VerticalAlignment="Center"
+                                                        FontSize="12"
+                                                        Foreground="White"
+                                                        Glyph="&#xE73E;" />
+                                                </Border>
+                                            </Grid>
+                                        </Border>
+
+                                        <Grid ColumnSpacing="4" MinHeight="32">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock
+                                                VerticalAlignment="Center"
+                                                FontSize="13"
+                                                FontWeight="SemiBold"
+                                                Text="{Binding Name}"
+                                                TextTrimming="CharacterEllipsis"
+                                                TextWrapping="NoWrap" />
+                                            <Button
+                                                Grid.Column="1"
+                                                Width="28"
+                                                Height="28"
+                                                Padding="0"
+                                                VerticalAlignment="Center"
+                                                Background="Transparent"
+                                                BorderThickness="0"
+                                                Click="OnPresetEditClick"
+                                                ToolTipService.ToolTip="Редактировать"
+                                                Visibility="{Binding ShowEditButton, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                <icons:LucideIcon Kind="pencil" Size="14" />
+                                            </Button>
+                                        </Grid>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </GridView.ItemTemplate>
+                        </GridView>
+                    </StackPanel>
 
                     <!-- Горячие клавиши -->
                     <StackPanel

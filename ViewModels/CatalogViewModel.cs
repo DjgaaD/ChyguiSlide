@@ -23,6 +23,7 @@ public partial class CatalogViewModel : ObservableRecipient
     private CatalogSortMode _sortMode = CatalogSortMode.Title;
     private bool _settingsLoaded;
     private bool _suppressFilterReload;
+    private bool _pendingSearchFocusRequest;
 
     public CatalogViewModel(
         ICatalogService catalogService,
@@ -55,6 +56,7 @@ public partial class CatalogViewModel : ObservableRecipient
     public ObservableCollection<CatalogSectionPreviewItem> SectionsPreview { get; }
 
     public ObservableCollection<CollectionFilterOption> CollectionFilters { get; }
+    public event Action? SearchFocusRequested;
 
     [ObservableProperty]
     private CollectionFilterOption? selectedCollectionFilter;
@@ -239,6 +241,23 @@ public partial class CatalogViewModel : ObservableRecipient
         }
 
         RefreshQuickPlaylistMembership();
+    }
+
+    public void RequestSearchFocus()
+    {
+        _pendingSearchFocusRequest = true;
+        SearchFocusRequested?.Invoke();
+    }
+
+    public bool ConsumePendingSearchFocusRequest()
+    {
+        if (!_pendingSearchFocusRequest)
+        {
+            return false;
+        }
+
+        _pendingSearchFocusRequest = false;
+        return true;
     }
 
     public async Task RefreshCollectionFiltersAsync(Guid? preferCollectionId = null)

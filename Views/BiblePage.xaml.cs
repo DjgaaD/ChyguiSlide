@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Navigation;
+using System.Threading.Tasks;
 
 namespace ChyguiSlide.Views;
 
@@ -16,6 +17,7 @@ public sealed partial class BiblePage : Page
         ViewModel = App.AppHost.Services.GetRequiredService<BibleViewModel>();
         DataContext = ViewModel;
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
+        ViewModel.SearchFocusRequested += OnSearchFocusRequested;
     }
 
     private async void OnPageLoaded(object sender, RoutedEventArgs e)
@@ -26,6 +28,8 @@ public sealed partial class BiblePage : Page
         {
             ViewModel.ApplySearch(null);
         }
+
+        await FocusSearchBoxIfRequestedAsync();
     }
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
@@ -80,9 +84,11 @@ public sealed partial class BiblePage : Page
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(sender.Text))
+        ViewModel.ApplySearch(sender.Text);
+
+        if (!ViewModel.IsSearchMode)
         {
-            ViewModel.ApplySearch(null);
+            SyncChapterSelection();
         }
     }
 
@@ -93,5 +99,21 @@ public sealed partial class BiblePage : Page
             ViewModel.NavigateToSearchResult(item);
             SyncChapterSelection();
         }
+    }
+
+    private async Task FocusSearchBoxIfRequestedAsync()
+    {
+        if (!ViewModel.ConsumePendingSearchFocusRequest())
+        {
+            return;
+        }
+
+        await Task.Yield();
+        SearchBox.Focus(FocusState.Programmatic);
+    }
+
+    private async void OnSearchFocusRequested()
+    {
+        await FocusSearchBoxIfRequestedAsync();
     }
 }

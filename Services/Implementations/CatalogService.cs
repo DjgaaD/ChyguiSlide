@@ -668,6 +668,7 @@ public class CatalogService(AppDbContext dbContext) : ICatalogService
             existing.IsBold = sanitized.IsBold;
             existing.TextAlignment = sanitized.TextAlignment;
             existing.SectionTransitionMode = sanitized.SectionTransitionMode;
+            existing.SectionTransitionDurationMs = sanitized.SectionTransitionDurationMs;
             existing.Colors = sanitized.Colors;
             existing.BackgroundMediaPath = sanitized.BackgroundMediaPath;
             existing.LoopBackgroundMedia = sanitized.LoopBackgroundMedia;
@@ -750,6 +751,35 @@ public class CatalogService(AppDbContext dbContext) : ICatalogService
 
         await _dbContext.SaveChangesAsync(cancellationToken);
         return wallpaper;
+    }
+
+    public async Task UpdateThemeWallpaperDisplayNameAsync(
+        Guid wallpaperId,
+        string displayName,
+        CancellationToken cancellationToken = default)
+    {
+        var wallpaper = await _dbContext.ThemeWallpapers
+            .FirstOrDefaultAsync(w => w.Id == wallpaperId, cancellationToken);
+        if (wallpaper is null)
+        {
+            return;
+        }
+
+        var name = string.IsNullOrWhiteSpace(displayName)
+            ? Path.GetFileNameWithoutExtension(wallpaper.FilePath)
+            : displayName.Trim();
+        if (name.Length > 256)
+        {
+            name = name[..256];
+        }
+
+        if (string.Equals(wallpaper.DisplayName, name, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        wallpaper.DisplayName = name;
+        await _dbContext.SaveChangesAsync(cancellationToken);
     }
 
     public async Task RemoveThemeWallpaperAsync(Guid wallpaperId, CancellationToken cancellationToken = default)
@@ -1085,6 +1115,7 @@ public class CatalogService(AppDbContext dbContext) : ICatalogService
             IsBold = preset.IsBold,
             TextAlignment = string.IsNullOrWhiteSpace(preset.TextAlignment) ? "Center" : preset.TextAlignment,
             SectionTransitionMode = preset.SectionTransitionMode,
+            SectionTransitionDurationMs = NormalizeTransitionDuration(preset.SectionTransitionDurationMs),
             Colors = new ThemeColors(
                 NormalizeColor(colors.Primary, ThemeColors.Default.Primary),
                 NormalizeColor(colors.Background, ThemeColors.Default.Background)),
@@ -1103,6 +1134,9 @@ public class CatalogService(AppDbContext dbContext) : ICatalogService
             TextOutlineOpacity = Math.Clamp(preset.TextOutlineOpacity, 0, 1)
         };
     }
+
+    private static int NormalizeTransitionDuration(int ms) =>
+        Math.Clamp(ms <= 0 ? 750 : ms, 150, 3000);
 
     private static string NormalizeColor(string value, string fallback)
     {

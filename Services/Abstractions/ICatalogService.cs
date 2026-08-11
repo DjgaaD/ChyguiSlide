@@ -26,6 +26,10 @@ public interface ICatalogService
         ThemeWallpaperPool pool,
         CancellationToken cancellationToken = default);
     Task RemoveThemeWallpaperAsync(Guid wallpaperId, CancellationToken cancellationToken = default);
+    Task UpdateThemeWallpaperDisplayNameAsync(
+        Guid wallpaperId,
+        string displayName,
+        CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<SongCollection>> GetSongCollectionsAsync(CancellationToken cancellationToken = default);
     Task<SongCollection> UpsertSongCollectionAsync(SongCollection collection, CancellationToken cancellationToken = default);

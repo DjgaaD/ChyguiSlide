@@ -1,11 +1,23 @@
+using System;
+using System.Numerics;
+using Microsoft.Graphics.Canvas;
+using Microsoft.Graphics.Canvas.Geometry;
+using Microsoft.Graphics.Canvas.Text;
+using Microsoft.Graphics.Canvas.UI.Xaml;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
+using Windows.Foundation;
+using Windows.UI;
 using Windows.UI.Text;
 
 namespace ChyguiSlide.Controls;
 
+/// <summary>
+/// Без обводки — TextBlock (автокегль/перенос).
+/// С обводкой — Win2D stroke+fill на CanvasControl (один слой, плавный fade).
+/// </summary>
 public sealed partial class OutlinedTextBlock : UserControl
 {
     public static readonly DependencyProperty TextProperty =
@@ -48,10 +60,13 @@ public sealed partial class OutlinedTextBlock : UserControl
         DependencyProperty.Register(nameof(OutlineOpacity), typeof(double), typeof(OutlinedTextBlock),
             new PropertyMetadata(1.0, OnVisualChanged));
 
+    private bool _outlineMode;
+    private bool _sizeHooked;
+
     public OutlinedTextBlock()
     {
         InitializeComponent();
-        Loaded += (_, _) => Rebuild();
+        Loaded += (_, _) => RefreshPresentation();
     }
 
     public string Text
@@ -118,75 +133,174 @@ public sealed partial class OutlinedTextBlock : UserControl
     {
         if (d is OutlinedTextBlock control)
         {
-            control.Rebuild();
+            control.RefreshPresentation();
         }
     }
 
-    private void Rebuild()
+    private void RefreshPresentation()
     {
-        if (Root is null)
+        if (FillText is null || OutlineCanvas is null)
         {
             return;
         }
 
-        Root.Children.Clear();
-        var fill = FillBrush ?? Foreground;
-        var thickness = OutlineThickness;
-        var outline = OutlineBrush;
+        EnsureSizeHook();
 
-        if (thickness > 0.1 && outline is not null)
+        _outlineMode = OutlineThickness > 0.1
+            && OutlineBrush is not null
+            && !string.IsNullOrEmpty(Text);
+
+        if (!_outlineMode)
         {
-            var opacity = Math.Clamp(OutlineOpacity, 0, 1);
-            var outlineBrush = CloneBrushWithOpacity(outline, opacity);
-            var radius = Math.Max(1, (int)Math.Ceiling(thickness));
-            for (var r = 1; r <= radius; r++)
-            {
-                var scale = r * (thickness / radius);
-                for (var i = 0; i < 8; i++)
-                {
-                    var angle = i * Math.PI / 4.0;
-                    Root.Children.Add(CreateLine(outlineBrush, Math.Cos(angle) * scale, Math.Sin(angle) * scale));
-                }
-            }
+            OutlineCanvas.Visibility = Visibility.Collapsed;
+            FillText.Visibility = Visibility.Visible;
+            FillText.Opacity = 1;
+            ApplyTextBlockLayout();
+            Height = double.NaN;
+            MinHeight = 0;
+            return;
         }
 
-        Root.Children.Add(CreateLine(fill, 0, 0));
+        ApplyTextBlockLayout();
+        // Оставляем живой TextBlock в layout, но делаем невидимым:
+        // его метрики полностью совпадают с режимом без контура.
+        FillText.Visibility = Visibility.Visible;
+        FillText.Opacity = 0;
+        OutlineCanvas.Visibility = Visibility.Visible;
+        OutlineCanvas.Invalidate();
     }
 
-    private TextBlock CreateLine(Brush? brush, double offsetX, double offsetY)
+    private void EnsureSizeHook()
+    {
+        if (_sizeHooked)
+        {
+            return;
+        }
+
+        _sizeHooked = true;
+        SizeChanged += (_, _) =>
+        {
+            if (_outlineMode)
+            {
+                OutlineCanvas?.Invalidate();
+            }
+        };
+    }
+
+    private void ApplyTextBlockLayout()
     {
         var weight = FontWeightValue.Weight == 0 ? FontWeights.Normal : FontWeightValue;
-        var tb = new TextBlock
-        {
-            Text = Text ?? string.Empty,
-            FontFamily = new FontFamily(string.IsNullOrWhiteSpace(FontFamilyName) ? "Segoe UI" : FontFamilyName),
-            FontSize = DisplayFontSize,
-            FontWeight = weight,
-            TextAlignment = TextAlignmentValue,
-            TextWrapping = TextWrapping,
-            Foreground = brush,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            IsHitTestVisible = false
-        };
-
-        if (Math.Abs(offsetX) > 0.01 || Math.Abs(offsetY) > 0.01)
-        {
-            tb.RenderTransform = new TranslateTransform { X = offsetX, Y = offsetY };
-        }
-
-        return tb;
+        FillText.Text = Text ?? string.Empty;
+        FillText.FontFamily = new FontFamily(string.IsNullOrWhiteSpace(FontFamilyName) ? "Segoe UI" : FontFamilyName);
+        FillText.FontSize = DisplayFontSize;
+        FillText.FontWeight = weight;
+        FillText.TextAlignment = TextAlignmentValue;
+        FillText.TextWrapping = TextWrapping;
+        FillText.Foreground = FillBrush ?? Foreground;
+        FillText.HorizontalAlignment = HorizontalAlignment.Stretch;
     }
 
-    private static Brush CloneBrushWithOpacity(Brush source, double opacity)
+    private void OnOutlineCanvasSizeChanged(object sender, SizeChangedEventArgs e)
     {
-        if (source is SolidColorBrush solid)
+        if (!_outlineMode)
         {
-            var c = solid.Color;
-            return new SolidColorBrush(global::Windows.UI.Color.FromArgb(
-                (byte)Math.Clamp((int)Math.Round(c.A * opacity), 0, 255),
-                c.R, c.G, c.B));
+            return;
         }
 
-        return source;
+        OutlineCanvas.Invalidate();
+    }
+
+    private void OnOutlineCanvasDraw(CanvasControl sender, CanvasDrawEventArgs args)
+    {
+        if (!_outlineMode || string.IsNullOrEmpty(Text))
+        {
+            return;
+        }
+
+        try
+        {
+            var strokeWidth = GetStrokeWidth();
+            var pad = strokeWidth + 1f;
+            var layoutWidth = Math.Max(
+                1f,
+                (float)Math.Max(FillText?.ActualWidth ?? 0, sender.ActualWidth) - pad * 2);
+            if (layoutWidth < 1 || sender.ActualHeight < 1)
+            {
+                return;
+            }
+
+            using var format = CreateTextFormat();
+            using var layout = new CanvasTextLayout(sender, Text, format, layoutWidth, float.MaxValue);
+            using var geometry = CanvasGeometry.CreateText(layout);
+
+            // Простой origin: не сдвигаем по X (сохраняем выравнивание), по Y учитываем ink выше baseline
+            var inkTop = layout.DrawBounds.Top;
+            var originY = pad + (float)Math.Max(0, -inkTop);
+            var origin = new Vector2(pad, originY);
+
+            var outlineColor = BrushToColor(OutlineBrush, OutlineOpacity);
+            var fillColor = BrushToColor(FillBrush ?? Foreground, 1);
+
+            args.DrawingSession.Antialiasing = CanvasAntialiasing.Antialiased;
+            using var strokeStyle = new CanvasStrokeStyle
+            {
+                LineJoin = CanvasLineJoin.Round,
+                StartCap = CanvasCapStyle.Round,
+                EndCap = CanvasCapStyle.Round
+            };
+            args.DrawingSession.DrawGeometry(geometry, origin, outlineColor, strokeWidth, strokeStyle);
+            args.DrawingSession.FillGeometry(geometry, origin, fillColor);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[OutlinedTextBlock] draw: {ex.Message}");
+            FillText.Visibility = Visibility.Visible;
+            FillText.Opacity = 1;
+            OutlineCanvas.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private float GetStrokeWidth()
+    {
+        // На мелком кегле толстая обводка даёт «ореол» вокруг букв — ограничиваем относительно FontSize
+        var maxForSize = Math.Max(0.8, DisplayFontSize * 0.12);
+        return (float)Math.Clamp(OutlineThickness, 0.5, maxForSize);
+    }
+
+    private CanvasTextFormat CreateTextFormat()
+    {
+        var weightValue = FontWeightValue.Weight == 0 ? FontWeights.Normal.Weight : FontWeightValue.Weight;
+        return new CanvasTextFormat
+        {
+            FontSize = (float)Math.Max(1, DisplayFontSize),
+            FontFamily = string.IsNullOrWhiteSpace(FontFamilyName) ? "Segoe UI" : FontFamilyName,
+            FontWeight = new FontWeight { Weight = weightValue },
+            WordWrapping = TextWrapping switch
+            {
+                TextWrapping.Wrap => CanvasWordWrapping.Wrap,
+                TextWrapping.WrapWholeWords => CanvasWordWrapping.WholeWord,
+                _ => CanvasWordWrapping.NoWrap
+            },
+            HorizontalAlignment = TextAlignmentValue switch
+            {
+                TextAlignment.Left => CanvasHorizontalAlignment.Left,
+                TextAlignment.Right => CanvasHorizontalAlignment.Right,
+                TextAlignment.Justify => CanvasHorizontalAlignment.Justified,
+                _ => CanvasHorizontalAlignment.Center
+            },
+            VerticalAlignment = CanvasVerticalAlignment.Top
+        };
+    }
+
+    private static Color BrushToColor(Brush? brush, double opacity)
+    {
+        Color c = Color.FromArgb(255, 255, 255, 255);
+        if (brush is SolidColorBrush solid)
+        {
+            c = solid.Color;
+        }
+
+        var a = (byte)Math.Clamp((int)Math.Round(c.A * Math.Clamp(opacity, 0, 1)), 0, 255);
+        return Color.FromArgb(a, c.R, c.G, c.B);
     }
 }

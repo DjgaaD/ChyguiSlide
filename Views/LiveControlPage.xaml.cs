@@ -24,17 +24,16 @@ public sealed partial class LiveControlPage : Page
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
-        Loaded -= OnLoaded;
+        // NavigationCacheMode=Required: страница переживает уход с раздела.
+        // Не дергаем RefreshQueue при каждом появлении — ListView иначе заново
+        // выставляет SelectedItem → ShowSongSections → пересборка слайда → мерцание видеофона.
         await ViewModel.InitializeAsync();
-        await ViewModel.RefreshQueueCommand.ExecuteAsync(null);
         ScrollCurrentSectionIntoView();
     }
 
     protected override void OnNavigatedTo(Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
-        // При возврате на страницу трансляции обновляем стиль из настроек
-        _ = ViewModel.LoadThemeFromSettingsAsync();
         ScrollCurrentSectionIntoView();
     }
 

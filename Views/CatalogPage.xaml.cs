@@ -1,11 +1,13 @@
 using System;
 using System.Linq;
 using ChyguiSlide.Data.Entities;
+using ChyguiSlide.Services;
 using ChyguiSlide.ViewModels;
 using ChyguiSlide.Views.Dialogs;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml;
+using System.Threading.Tasks;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
 
@@ -22,6 +24,7 @@ public sealed partial class CatalogPage : Page
         InitializeComponent();
         ViewModel = App.AppHost.Services.GetRequiredService<CatalogViewModel>();
         DataContext = ViewModel;
+        ViewModel.SearchFocusRequested += OnSearchFocusRequested;
     }
 
     private async void OnPageLoaded(object sender, RoutedEventArgs e)
@@ -36,6 +39,8 @@ public sealed partial class CatalogPage : Page
         {
             SearchBox.Text = ViewModel.SearchTerm;
         }
+
+        await FocusSearchBoxIfRequestedAsync();
     }
 
     protected override void OnNavigatedFrom(Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
@@ -397,7 +402,8 @@ public sealed partial class CatalogPage : Page
             CloseButtonText = "Закрыть",
             DefaultButton = ContentDialogButton.Primary,
             FullSizeDesired = true,
-            XamlRoot = XamlRoot
+            XamlRoot = XamlRoot,
+            RequestedTheme = AppUiThemeApplier.GetCurrentElementTheme()
         };
 
         // WinUI по умолчанию режет диалог ~548px — без этого FullSizeDesired почти не помогает
@@ -517,5 +523,21 @@ public sealed partial class CatalogPage : Page
     private void OnAddToQuickPlaylistClicked(object sender, RoutedEventArgs e)
     {
         ViewModel.AddToQuickPlaylistCommand.Execute(null);
+    }
+
+    private async Task FocusSearchBoxIfRequestedAsync()
+    {
+        if (!ViewModel.ConsumePendingSearchFocusRequest())
+        {
+            return;
+        }
+
+        await Task.Yield();
+        SearchBox.Focus(FocusState.Programmatic);
+    }
+
+    private async void OnSearchFocusRequested()
+    {
+        await FocusSearchBoxIfRequestedAsync();
     }
 }

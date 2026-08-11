@@ -15,6 +15,8 @@ public interface IProjectionDisplayService
     Task ShowAsync();
     void Hide();
     void SetBlackout(bool isBlackout);
+    /// <summary>Сброс opacity слоёв слайда и перерисовка текущего текста.</summary>
+    void EnsureContentVisible();
     void ApplyTheme(ThemePreset? theme);
     Task ToggleVideoModeAsync();
     Task ToggleNdiVideoModeAsync();

@@ -38,6 +38,7 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
     private NdiVideoRenderer? _ndiVideoRenderer;
     private DispatcherQueueTimer? _topMostTimer;
     private IntPtr _projectionHwnd;
+    private string? _syncedBackgroundVideoPath;
 
     private static readonly IntPtr HwndTopMost = new(-1);
     private const uint SwpNomove = 0x0002;
@@ -123,6 +124,16 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
             
             if (themePresetId.HasValue)
             {
+                // Если настройки уже открыты и тема редактируется/выбрана там,
+                // стартуем по текущему состоянию редактора, а не по устаревшей записи из БД.
+                if (_serviceProvider.GetService(typeof(ThemePresetEditorViewModel)) is ThemePresetEditorViewModel themeEditor
+                    && themeEditor.GetCurrentProjectionTheme() is ThemePreset editorTheme
+                    && editorTheme.Id == themePresetId.Value)
+                {
+                    ApplyTheme(editorTheme, startNewBackgroundSession);
+                    return;
+                }
+
                 var themePreset = await _catalogService.GetThemePresetAsync(themePresetId.Value);
                 if (themePreset is not null)
                 {
@@ -192,6 +203,7 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
                 _viewModel.BackgroundMediaChanged -= OnBackgroundMediaChanged;
             }
 
+            _syncedBackgroundVideoPath = null;
             _window = null;
             window.Close();
             ProjectionWindowVisibilityChanged?.Invoke(this, false);
@@ -216,6 +228,15 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
             _viewModel ??= _serviceProvider.GetRequiredService<ProjectionDisplayViewModel>();
             _viewModel.SetBlackout(isBlackout);
             BlackoutStateChanged?.Invoke(this, _viewModel.IsBlackout);
+        });
+    }
+
+    public void EnsureContentVisible()
+    {
+        _ = RunOnDispatcherAsync(() =>
+        {
+            _viewModel ??= _serviceProvider.GetRequiredService<ProjectionDisplayViewModel>();
+            _viewModel.EnsureContentVisible();
         });
     }
 
@@ -251,6 +272,24 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
         }
 
         var player = _window.BackgroundVideoPlayerElement;
+        var desiredPath = _viewModel.IsBackgroundVideoVisible
+            && !string.IsNullOrWhiteSpace(_viewModel.BackgroundVideoPath)
+            && File.Exists(_viewModel.BackgroundVideoPath)
+            ? _viewModel.BackgroundVideoPath
+            : null;
+
+        // Уже играет тот же файл — не сбрасываем Source (иначе мерцание при повторном ApplyTheme)
+        if (string.Equals(_syncedBackgroundVideoPath, desiredPath, StringComparison.OrdinalIgnoreCase)
+            && (desiredPath is null || player.Source is not null))
+        {
+            if (desiredPath is not null && player.MediaPlayer is not null)
+            {
+                player.MediaPlayer.IsLoopingEnabled = _viewModel.LoopBackgroundMedia;
+            }
+
+            return;
+        }
+
         try
         {
             player.Source = null;
@@ -261,9 +300,9 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
             System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] Clear background video: {ex.Message}");
         }
 
-        if (!_viewModel.IsBackgroundVideoVisible
-            || string.IsNullOrWhiteSpace(_viewModel.BackgroundVideoPath)
-            || !File.Exists(_viewModel.BackgroundVideoPath))
+        _syncedBackgroundVideoPath = null;
+
+        if (desiredPath is null)
         {
             return;
         }
@@ -282,10 +321,11 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
 
             // Локальные MP4 надёжнее через StorageFile, чем через file:// URI
             var storageFile = await global::Windows.Storage.StorageFile
-                .GetFileFromPathAsync(_viewModel.BackgroundVideoPath);
+                .GetFileFromPathAsync(desiredPath);
             player.Source = MediaSource.CreateFromStorageFile(storageFile);
             mediaPlayer.Play();
-            System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] Background video: {_viewModel.BackgroundVideoPath}");
+            _syncedBackgroundVideoPath = desiredPath;
+            System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] Background video: {desiredPath}");
         }
         catch (Exception ex)
         {
@@ -832,6 +872,7 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
             }
 
             _window.Closed -= OnWindowClosed;
+            _syncedBackgroundVideoPath = null;
             _window = null;
             ProjectionWindowVisibilityChanged?.Invoke(this, false);
         }

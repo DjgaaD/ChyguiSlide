@@ -140,6 +140,9 @@ namespace ChyguiSlide
                     LogToFile($"Тема UI: {themeEx.Message}");
                 }
 
+                // Постоянный фон: открыть окно проекции без текста, если настройка включена
+                _ = EnsurePersistentProjectionBackgroundOnStartupAsync();
+
                 LogToFile("=== ЗАПУСК ЗАВЕРШЕН УСПЕШНО ===");
             }
             catch (Exception ex)
@@ -153,6 +156,28 @@ namespace ChyguiSlide
                     LogToFile($"Внутренняя ошибка: {ex.InnerException}");
                 }
                 throw;
+            }
+        }
+
+        private static async Task EnsurePersistentProjectionBackgroundOnStartupAsync()
+        {
+            try
+            {
+                // Дать главному окну и диспетчеру стабилизироваться
+                await Task.Delay(400);
+                var live = AppHost.Services.GetRequiredService<LiveControlViewModel>();
+                if (!live.IsInitialized)
+                {
+                    await live.InitializeAsync();
+                }
+                else
+                {
+                    await live.EnsurePersistentBackgroundAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                LogToFile($"Постоянный фон при старте: {ex.Message}");
             }
         }
 
@@ -575,6 +600,7 @@ namespace ChyguiSlide
             EnsureThemePresetColumn(connection, "SelectedSharedWallpaperId", "ALTER TABLE ThemePresets ADD COLUMN SelectedSharedWallpaperId TEXT NULL;");
             EnsureThemePresetColumn(connection, "SelectedSongWallpaperId", "ALTER TABLE ThemePresets ADD COLUMN SelectedSongWallpaperId TEXT NULL;");
             EnsureThemePresetColumn(connection, "SelectedBibleWallpaperId", "ALTER TABLE ThemePresets ADD COLUMN SelectedBibleWallpaperId TEXT NULL;");
+            EnsureThemePresetColumn(connection, "SectionTransitionDurationMs", "ALTER TABLE ThemePresets ADD COLUMN SectionTransitionDurationMs INTEGER NOT NULL DEFAULT 750;");
 
             using (var createWallpapers = connection.CreateCommand())
             {

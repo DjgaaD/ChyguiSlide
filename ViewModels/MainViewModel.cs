@@ -33,12 +33,32 @@ public partial class MainViewModel : ObservableObject
 
     public bool IsOnAnnouncementsPage => SelectedItem?.PageType == typeof(Views.AnnouncementsPage);
 
+    public bool IsOnLiveControlPage => SelectedItem?.PageType == typeof(Views.LiveControlPage);
+
     public void NavigateToLiveControl()
     {
         var liveItem = NavigationItems.FirstOrDefault(i => i.PageType == typeof(Views.LiveControlPage));
         if (liveItem is not null)
         {
             SelectedItem = liveItem;
+        }
+    }
+
+    public void NavigateToBible()
+    {
+        var bibleItem = NavigationItems.FirstOrDefault(i => i.PageType == typeof(Views.BiblePage));
+        if (bibleItem is not null)
+        {
+            SelectedItem = bibleItem;
+        }
+    }
+
+    public void NavigateToCatalog()
+    {
+        var catalogItem = NavigationItems.FirstOrDefault(i => i.PageType == typeof(Views.CatalogPage));
+        if (catalogItem is not null)
+        {
+            SelectedItem = catalogItem;
         }
     }
 }

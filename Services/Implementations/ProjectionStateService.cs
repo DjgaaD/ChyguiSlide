@@ -40,24 +40,80 @@ public class ProjectionStateService : IProjectionStateService
     {
         lock (_stateLock)
         {
-            _songId = songId;
-            _songTitle = songTitle;
-            _sectionIndex = Math.Clamp(initialSectionIndex, 0, Math.Max(sections.Count - 1, 0));
-            _sections = sections.Count > 0
+            var nextIndex = Math.Clamp(initialSectionIndex, 0, Math.Max(sections.Count - 1, 0));
+            IReadOnlyList<string> nextSections = sections.Count > 0
                 ? sections.ToImmutableList()
                 : Array.Empty<string>();
-            _sectionCaptions = sectionCaptions is { Count: > 0 }
+            IReadOnlyList<string?> nextCaptions = sectionCaptions is { Count: > 0 }
                 ? sectionCaptions.ToImmutableList()
                 : Array.Empty<string?>();
+
+            // Тот же контент — не публикуем StateChanged (иначе RefreshLines рядом с MediaPlayer → мерцание)
+            if (_songId == songId
+                && _sectionIndex == nextIndex
+                && _linesOverride is null
+                && string.Equals(_songTitle, songTitle, StringComparison.Ordinal)
+                && SectionsEqual(_sections, nextSections)
+                && CaptionsEqual(_sectionCaptions, nextCaptions))
+            {
+                return;
+            }
+
+            _songId = songId;
+            _songTitle = songTitle;
+            _sectionIndex = nextIndex;
+            _sections = nextSections;
+            _sectionCaptions = nextCaptions;
             _linesOverride = null;
             PublishState();
         }
+    }
+
+    private static bool SectionsEqual(IReadOnlyList<string> a, IReadOnlyList<string> b)
+    {
+        if (a.Count != b.Count)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < a.Count; i++)
+        {
+            if (!string.Equals(a[i], b[i], StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool CaptionsEqual(IReadOnlyList<string?> a, IReadOnlyList<string?> b)
+    {
+        if (a.Count != b.Count)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < a.Count; i++)
+        {
+            if (!string.Equals(a[i], b[i], StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     public void SetPlaylistContext(Guid? playlistId)
     {
         lock (_stateLock)
         {
+            if (_playlistId == playlistId)
+            {
+                return;
+            }
+
             _playlistId = playlistId;
             PublishState();
         }

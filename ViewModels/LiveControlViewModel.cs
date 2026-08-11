@@ -58,10 +58,19 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
             return;
         }
 
-        if (value?.Song != null)
+        if (value?.Song is null)
         {
-            _ = ShowSongSectionsAsync(value);
+            return;
         }
+
+        // ListView при возврате на страницу снова выставляет SelectedItem —
+        // не трогаем проектор, если эта песня уже на экране (иначе мерцает видеофон).
+        if (_projectionStateService.Current.SongId == value.SongId)
+        {
+            return;
+        }
+
+        _ = ShowSongSectionsAsync(value);
     }
 
     [ObservableProperty]
@@ -191,6 +200,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
         _isInitialized = true;
         await LoadQueueAsync();
         await LoadThemeFromSettingsAsync();
+        await EnsurePersistentBackgroundAsync();
         
         // Обновляем команды после инициализации
         ToggleNdiVideoModeCommand.NotifyCanExecuteChanged();
@@ -467,14 +477,21 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
 
     private async Task OpenProjectionAsync()
     {
+        var alreadyOpen = _projectionDisplayService.IsOpen;
         await _projectionDisplayService.ShowAsync();
-        if (_currentThemePreset is not null)
+
+        // Если окно уже было открыто (постоянный фон) — не переприменяем тему:
+        // повторный ApplyTheme сбрасывает видеофон.
+        if (!alreadyOpen)
         {
-            _projectionDisplayService.ApplyTheme(_currentThemePreset);
-        }
-        else
-        {
-            await LoadThemeFromSettingsAsync();
+            if (_currentThemePreset is not null)
+            {
+                _projectionDisplayService.ApplyTheme(_currentThemePreset);
+            }
+            else
+            {
+                await LoadThemeFromSettingsAsync();
+            }
         }
 
         // NDI не блокирует открытие окна
@@ -482,6 +499,65 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
     }
 
     private void CloseProjection() => _projectionDisplayService.Hide();
+
+    /// <summary>
+    /// Esc / завершение показа: при постоянном фоне — только убрать текст, иначе закрыть окно.
+    /// </summary>
+    private async Task EndShowAsync()
+    {
+        if (!_projectionDisplayService.IsOpen)
+        {
+            return;
+        }
+
+        try
+        {
+            if (await _displaySettingsService.GetKeepProjectionBackgroundAsync())
+            {
+                _projectionDisplayService.SetBlackout(false);
+                ClearProjection();
+                StatusMessage = "Текст убран. Фон остаётся на экране.";
+            }
+            else
+            {
+                CloseProjection();
+                StatusMessage = "Трансляция завершена.";
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"EndShowAsync: {ex.Message}");
+            CloseProjection();
+        }
+    }
+
+    /// <summary>
+    /// Если включён постоянный фон — открыть окно без текста (для старта приложения / настройки).
+    /// </summary>
+    public async Task EnsurePersistentBackgroundAsync()
+    {
+        try
+        {
+            if (!await _displaySettingsService.GetKeepProjectionBackgroundAsync())
+            {
+                return;
+            }
+
+            // Сначала очищаем контент — иначе при Show подтянется старый слайд
+            ClearProjection();
+            _projectionDisplayService.SetBlackout(false);
+
+            if (!_projectionDisplayService.IsOpen)
+            {
+                await OpenProjectionAsync();
+                ClearProjection();
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"EnsurePersistentBackgroundAsync: {ex.Message}");
+        }
+    }
 
     /// <summary>
     /// Выполнение действий трансляции по горячим клавишам (минуя CanExecute UI-команд).
@@ -494,10 +570,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
                 _ = StartShowFromHotkeyAsync();
                 break;
             case AppHotkeyAction.EndShow:
-                if (_projectionDisplayService.IsOpen)
-                {
-                    CloseProjection();
-                }
+                _ = EndShowAsync();
                 break;
             case AppHotkeyAction.NextSlide:
                 AdvanceOrNextSong();
@@ -561,9 +634,13 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
                 }
             }
 
-            // Уже есть активный контент вне каталога — просто открываем окно
-            if (_currentSections.Count > 0 || _projectionStateService.Current.SongId is not null)
+            // Быстрый плейлист / текущая песня на Трансляции:
+            // всегда выкладываем выбранную секцию (после Esc при постоянном фоне
+            // SongId уже null, а _currentSections ещё заполнены — старый early-return ничего не делал).
+            var entryForShow = ResolveEntryForHotkeyStart();
+            if (entryForShow?.Song is not null)
             {
+                await ShowSongSectionsAsync(entryForShow, ResolveSectionIndexForHotkeyStart(entryForShow));
                 if (!_projectionDisplayService.IsOpen)
                 {
                     await OpenProjectionAsync();
@@ -572,26 +649,15 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
                 return;
             }
 
-            if (SelectedQuickEntry?.Song is not null)
+            // Контент в state без записи в UI — просто открыть окно и гарантировать видимость текста
+            if (_projectionStateService.Current.SongId is not null)
             {
-                await ShowSongSectionsAsync(SelectedQuickEntry);
                 if (!_projectionDisplayService.IsOpen)
                 {
                     await OpenProjectionAsync();
                 }
 
-                return;
-            }
-
-            var firstQuick = QuickEntries.FirstOrDefault(e => e.Song is not null);
-            if (firstQuick?.Song is not null)
-            {
-                await ShowSongSectionsAsync(firstQuick);
-                if (!_projectionDisplayService.IsOpen)
-                {
-                    await OpenProjectionAsync();
-                }
-
+                _projectionDisplayService.EnsureContentVisible();
                 return;
             }
 
@@ -624,6 +690,42 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
         _projectionStateService.Clear();
         UpdateSectionsHighlight(-1);
         NotifySectionProgressChanged();
+    }
+
+    private PlaylistEntry? ResolveEntryForHotkeyStart()
+    {
+        if (SelectedQuickEntry?.Song is not null)
+        {
+            return SelectedQuickEntry;
+        }
+
+        if (CurrentSongIndex >= 0
+            && CurrentSongIndex < _currentEntries.Count
+            && _currentEntries[CurrentSongIndex].Song is not null)
+        {
+            return _currentEntries[CurrentSongIndex];
+        }
+
+        return QuickEntries.FirstOrDefault(e => e.Song is not null);
+    }
+
+    private int ResolveSectionIndexForHotkeyStart(PlaylistEntry entry)
+    {
+        if (SelectedSection is not null && Sections.Count > 0)
+        {
+            var idx = Sections.IndexOf(SelectedSection);
+            if (idx >= 0)
+            {
+                return idx;
+            }
+        }
+
+        if (_projectionStateService.Current.SongId == entry.SongId)
+        {
+            return Math.Max(0, _projectionStateService.Current.SectionIndex);
+        }
+
+        return 0;
     }
 
     private static bool IsBibleProjection(Song? song) =>
@@ -878,11 +980,6 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
             _projectionStateService.GoToSection(_currentSections.Count - 1);
         }
 
-        if (_currentThemePreset is not null)
-        {
-            _projectionDisplayService.ApplyTheme(_currentThemePreset);
-        }
-
         _suppressQuickEntryShow = true;
         SelectedQuickEntry = entry;
         _suppressQuickEntryShow = false;
@@ -964,15 +1061,6 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
         // Сбрасываем старое состояние проектора и ставим новую песню с нужной секции
         _projectionStateService.Clear();
         await ShowSongSectionsAsync(entry, startSectionIndex);
-
-        if (_currentThemePreset is not null)
-        {
-            _projectionDisplayService.ApplyTheme(_currentThemePreset);
-        }
-        else
-        {
-            _ = LoadThemeFromSettingsAsync();
-        }
 
         if (!_projectionDisplayService.IsOpen)
         {
@@ -1133,20 +1221,41 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
         System.Diagnostics.Debug.WriteLine(
             $"ShowSongSectionsAsync: song='{entry.Song.Title}', sections={sections.Count}, start={initialIndex}");
 
+        var current = _projectionStateService.Current;
+        var alreadyOnScreen = current.SongId == entry.SongId
+            && current.SectionIndex == initialIndex
+            && current.VisibleLines.Count > 0;
+
+        if (alreadyOnScreen)
+        {
+            UpdateSectionsHighlight(current.SectionIndex);
+            StatusMessage = sections.Count > 0
+                ? $"Песня «{entry.Song.Title}» выбрана. Загружено {sections.Count} секций."
+                : $"Песня «{entry.Song.Title}» выбрана. Секций нет.";
+            NotifySectionProgressChanged();
+            NotifySongProgressChanged();
+            // Тот же слайд в state, но на экране мог остаться opacity=0 после сбоя анимации
+            _projectionDisplayService.EnsureContentVisible();
+            return;
+        }
+
         // Устанавливаем песню в проектор сразу с нужной секции
         _projectionStateService.SetPlaylistContext(null);
         _projectionStateService.SetSong(entry.SongId, entry.Song.Title, contentSegments, initialIndex, captions);
         UpdateSectionsHighlight(initialIndex);
 
-        // Применяем стиль из настроек при выборе песни из быстрого плейлиста
-        if (_currentThemePreset is not null)
+        // Фон/тема уже на проекторе при открытом окне (постоянный фон) —
+        // повторный ApplyTheme гасит видеофон. Применяем только если окна ещё нет.
+        if (!_projectionDisplayService.IsOpen)
         {
-            _projectionDisplayService.ApplyTheme(_currentThemePreset);
-        }
-        else
-        {
-            // Если стиль не загружен, загружаем его из настроек
-            await LoadThemeFromSettingsAsync();
+            if (_currentThemePreset is not null)
+            {
+                _projectionDisplayService.ApplyTheme(_currentThemePreset);
+            }
+            else
+            {
+                await LoadThemeFromSettingsAsync();
+            }
         }
 
         StatusMessage = sections.Count > 0
@@ -1366,6 +1475,15 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
             return;
         }
 
+        // После Esc при постоянном фоне state очищен — GoToSection no-op.
+        // Выкладываем песню заново с выбранной секцией.
+        if (_projectionStateService.Current.SongId is null
+            && SelectedQuickEntry?.Song is not null)
+        {
+            _ = ShowSongSectionsAsync(SelectedQuickEntry, index);
+            return;
+        }
+
         SkipToSection(index);
     }
 
@@ -1401,8 +1519,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
             _projectionStateService.AdvanceSection();
             if (CurrentState.SectionIndex == before && _projectionDisplayService.IsOpen)
             {
-                CloseProjection();
-                StatusMessage = "Трансляция завершена (последний слайд).";
+                _ = EndShowAsync();
             }
 
             NotifySectionProgressChanged();
@@ -1419,11 +1536,10 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
                 return;
             }
 
-            // Песня: закрываем показ. Следующую песню оператор запускает вручную.
+            // Песня: завершаем показ (при постоянном фоне — только текст)
             if (_projectionDisplayService.IsOpen)
             {
-                CloseProjection();
-                StatusMessage = "Трансляция завершена (последний слайд).";
+                _ = EndShowAsync();
             }
 
             NotifySectionProgressChanged();
@@ -1538,15 +1654,14 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
 
         _projectionStateService.SetSong(entry.SongId, entry.Song.Title, contentSegments, initialIndex, captions);
         UpdateSectionsHighlight(initialIndex);
-        
-        // Применяем стиль из настроек при каждой смене песни
-        if (_currentThemePreset is not null)
+
+        // Не переприменяем тему при смене песни — фон уже на экране
+        if (!_projectionDisplayService.IsOpen && _currentThemePreset is not null)
         {
             _projectionDisplayService.ApplyTheme(_currentThemePreset);
         }
-        else
+        else if (!_projectionDisplayService.IsOpen)
         {
-            // Если стиль не загружен, загружаем его из настроек
             _ = LoadThemeFromSettingsAsync();
         }
         

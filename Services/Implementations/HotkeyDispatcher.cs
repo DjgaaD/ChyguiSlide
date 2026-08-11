@@ -110,7 +110,8 @@ public sealed class HotkeyDispatcher : IDisposable
         // F5 / Esc — всегда: иначе поиск в каталоге «съедает» старт показа.
         if (IsTextInputFocused()
             && action is not AppHotkeyAction.StartShow
-            && action is not AppHotkeyAction.EndShow)
+            && action is not AppHotkeyAction.EndShow
+            && action is not AppHotkeyAction.FocusBibleSearch)
         {
             return false;
         }
@@ -134,6 +135,25 @@ public sealed class HotkeyDispatcher : IDisposable
     {
         try
         {
+            if (action == AppHotkeyAction.FocusBibleSearch)
+            {
+                var main = _services.GetRequiredService<MainViewModel>();
+                if (main.IsOnCatalogPage)
+                {
+                    var catalog = _services.GetRequiredService<CatalogViewModel>();
+                    await catalog.InitializeAsync();
+                    catalog.RequestSearchFocus();
+                }
+                else if (main.IsOnBiblePage)
+                {
+                    var bible = _services.GetRequiredService<BibleViewModel>();
+                    await bible.InitializeAsync();
+                    bible.RequestSearchFocus();
+                }
+
+                return;
+            }
+
             var live = _services.GetRequiredService<LiveControlViewModel>();
             if (!live.IsInitialized)
             {

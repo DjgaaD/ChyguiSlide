@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="UTF-8" ?>
+<?xml version="1.0" encoding="UTF-8" ?>
 <Page
     x:Class="ChyguiSlide.Views.LiveControlPage"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -8,6 +8,7 @@
     xmlns:viewModels="using:ChyguiSlide.ViewModels"
     xmlns:converters="using:ChyguiSlide.Converters"
     xmlns:icons="using:ChyguiSlide.Controls"
+    NavigationCacheMode="Required"
     mc:Ignorable="d">
 
     <Page.Resources>

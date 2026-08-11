@@ -29,6 +29,8 @@ public class ThemePresetConfiguration : IEntityTypeConfiguration<ThemePreset>
         builder.Property(x => x.SectionTransitionMode)
             .HasConversion<int>();
 
+        builder.Property(x => x.SectionTransitionDurationMs);
+
         builder.Property(x => x.BackgroundMediaPath)
             .HasMaxLength(512);
 

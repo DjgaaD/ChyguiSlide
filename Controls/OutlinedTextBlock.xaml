@@ -2,6 +2,23 @@
 <UserControl
     x:Class="ChyguiSlide.Controls.OutlinedTextBlock"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Grid x:Name="Root" />
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:canvas="using:Microsoft.Graphics.Canvas.UI.Xaml">
+    <Grid x:Name="Root">
+        <!-- Без обводки: обычный TextBlock — автокегль/перенос как раньше -->
+        <TextBlock
+            x:Name="FillText"
+            HorizontalAlignment="Stretch"
+            IsHitTestVisible="False" />
+        <!-- С обводкой: Win2D stroke по контуру глифов (один слой → нормальный fade) -->
+        <canvas:CanvasControl
+            x:Name="OutlineCanvas"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch"
+            ClearColor="Transparent"
+            IsHitTestVisible="False"
+            Visibility="Collapsed"
+            Draw="OnOutlineCanvasDraw"
+            SizeChanged="OnOutlineCanvasSizeChanged" />
+    </Grid>
 </UserControl>

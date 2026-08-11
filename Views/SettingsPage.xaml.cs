@@ -1,4 +1,6 @@
 using System;
+using ChyguiSlide.Data.Entities;
+using ChyguiSlide.Services;
 using ChyguiSlide.Services.Models;
 using ChyguiSlide.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
@@ -15,6 +17,8 @@ namespace ChyguiSlide.Views;
 public sealed partial class SettingsPage : Page
 {
     public ThemePresetEditorViewModel ViewModel { get; }
+
+    private ContentDialog? _themeEditorDialog;
 
     public SettingsPage()
     {
@@ -71,6 +75,193 @@ public sealed partial class SettingsPage : Page
         }
     }
 
+    private async void OnCreatePresetClicked(object sender, RoutedEventArgs e)
+    {
+        await OpenThemeEditorDialogAsync(createNew: true);
+    }
+
+    private void OnPresetPreviewTapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: ThemePresetListItem item })
+        {
+            ViewModel.SelectPresetItem(item);
+        }
+    }
+
+    private void OnPresetPreviewPointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: ThemePresetListItem item })
+        {
+            item.IsHovering = true;
+        }
+    }
+
+    private void OnPresetPreviewPointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: ThemePresetListItem item })
+        {
+            item.IsHovering = false;
+        }
+    }
+
+    private async void OnPresetEditClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: ThemePresetListItem item })
+        {
+            return;
+        }
+
+        await OpenThemeEditorDialogAsync(createNew: false, item.Preset);
+    }
+
+    private async System.Threading.Tasks.Task OpenThemeEditorDialogAsync(bool createNew, ThemePreset? preset = null)
+    {
+        if (createNew)
+        {
+            ViewModel.PrepareCreatePreset();
+        }
+        else if (preset is not null)
+        {
+            ViewModel.PrepareEditPreset(preset);
+        }
+        else
+        {
+            return;
+        }
+
+        var editorPage = new ThemeEditorPage
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch
+        };
+
+        ViewModel.ThemePresetSaved += OnThemePresetSaved;
+        ViewModel.ThemePresetDeleted += OnThemePresetDeleted;
+
+        var (width, height) = GetThemeEditorDialogSize();
+        var host = new Border
+        {
+            Width = width,
+            Height = height,
+            Child = editorPage
+        };
+
+        _themeEditorDialog = new ContentDialog
+        {
+            Title = createNew ? "Новый стиль" : "Редактор стиля",
+            Content = host,
+            PrimaryButtonText = "Сохранить",
+            CloseButtonText = "Закрыть",
+            DefaultButton = ContentDialogButton.Primary,
+            FullSizeDesired = true,
+            XamlRoot = XamlRoot,
+            RequestedTheme = AppUiThemeApplier.GetCurrentElementTheme()
+        };
+
+        if (!createNew)
+        {
+            _themeEditorDialog.SecondaryButtonText = "Удалить";
+        }
+
+        _themeEditorDialog.Resources["ContentDialogMaxWidth"] = width + 48;
+        _themeEditorDialog.Resources["ContentDialogMinWidth"] = Math.Min(width, 960);
+        _themeEditorDialog.Resources["ContentDialogMaxHeight"] = height + 120;
+
+        _themeEditorDialog.PrimaryButtonClick += OnThemeEditorPrimarySaveClick;
+        if (!createNew)
+        {
+            _themeEditorDialog.SecondaryButtonClick += OnThemeEditorSecondaryDeleteClick;
+        }
+
+        try
+        {
+            await _themeEditorDialog.ShowAsync();
+        }
+        finally
+        {
+            _themeEditorDialog.PrimaryButtonClick -= OnThemeEditorPrimarySaveClick;
+            _themeEditorDialog.SecondaryButtonClick -= OnThemeEditorSecondaryDeleteClick;
+            ViewModel.ThemePresetSaved -= OnThemePresetSaved;
+            ViewModel.ThemePresetDeleted -= OnThemePresetDeleted;
+            ViewModel.EndModalEdit();
+            _themeEditorDialog = null;
+        }
+    }
+
+    private async void OnThemeEditorPrimarySaveClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
+    {
+        args.Cancel = true;
+        if (!ViewModel.SaveCommand.CanExecute(null))
+        {
+            return;
+        }
+
+        var deferral = args.GetDeferral();
+        try
+        {
+            await ViewModel.SaveCommand.ExecuteAsync(null);
+        }
+        finally
+        {
+            deferral.Complete();
+        }
+    }
+
+    private async void OnThemeEditorSecondaryDeleteClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
+    {
+        args.Cancel = true;
+        if (!ViewModel.DeleteCommand.CanExecute(null))
+        {
+            return;
+        }
+
+        var deferral = args.GetDeferral();
+        try
+        {
+            await ViewModel.DeleteCommand.ExecuteAsync(null);
+        }
+        finally
+        {
+            deferral.Complete();
+        }
+    }
+
+    private void OnThemePresetSaved(object? sender, ThemePreset e)
+    {
+        _ = DispatcherQueue.TryEnqueue(() => _themeEditorDialog?.Hide());
+    }
+
+    private void OnThemePresetDeleted(object? sender, EventArgs e)
+    {
+        _ = DispatcherQueue.TryEnqueue(() => _themeEditorDialog?.Hide());
+    }
+
+    private static (double Width, double Height) GetThemeEditorDialogSize()
+    {
+        double windowWidth = 1280;
+        double windowHeight = 800;
+        try
+        {
+            if (App.MainWindow is not null)
+            {
+                var bounds = App.MainWindow.Bounds;
+                if (bounds.Width > 200 && bounds.Height > 200)
+                {
+                    windowWidth = bounds.Width;
+                    windowHeight = bounds.Height;
+                }
+            }
+        }
+        catch
+        {
+            // fallback
+        }
+
+        var width = Math.Clamp(windowWidth - 96, 900, 1400);
+        var height = Math.Clamp(windowHeight - 160, 560, 900);
+        return (width, height);
+    }
+
     private void OnPageKeyDown(object sender, KeyRoutedEventArgs e)
     {
         var ctrl = IsDown(VirtualKey.Control);
@@ -85,44 +276,6 @@ public sealed partial class SettingsPage : Page
 
     private static bool IsDown(VirtualKey key)
         => InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(CoreVirtualKeyStates.Down);
-
-    private async void OnPickPrimaryColorClicked(object sender, RoutedEventArgs e)
-        => await PickColorAsync(c => ViewModel.PrimaryPickerColor = c, ViewModel.PrimaryPickerColor);
-
-    private async void OnPickBackgroundColorClicked(object sender, RoutedEventArgs e)
-        => await PickColorAsync(c => ViewModel.BackgroundPickerColor = c, ViewModel.BackgroundPickerColor);
-
-    private async void OnPickOutlineColorClicked(object sender, RoutedEventArgs e)
-        => await PickColorAsync(c => ViewModel.TextOutlinePickerColor = c, ViewModel.TextOutlinePickerColor);
-
-    private async System.Threading.Tasks.Task PickColorAsync(
-        Action<global::Windows.UI.Color> apply,
-        global::Windows.UI.Color initial)
-    {
-        var picker = new ColorPicker
-        {
-            ColorSpectrumShape = ColorSpectrumShape.Box,
-            IsAlphaEnabled = false,
-            IsColorChannelTextInputVisible = true,
-            IsHexInputVisible = true,
-            Color = initial
-        };
-
-        var dialog = new ContentDialog
-        {
-            Title = "Цвет",
-            Content = picker,
-            PrimaryButtonText = "OK",
-            CloseButtonText = "Отмена",
-            DefaultButton = ContentDialogButton.Primary,
-            XamlRoot = XamlRoot
-        };
-
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
-        {
-            apply(picker.Color);
-        }
-    }
 
     private async void OnRestoreYandexBackupClicked(object sender, RoutedEventArgs e)
     {

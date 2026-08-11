@@ -28,7 +28,7 @@ public sealed class BoolToAccentBorderThicknessConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, string language)
     {
-        return value is true ? new Thickness(2) : new Thickness(1);
+        return value is true ? new Thickness(3) : new Thickness(1);
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, string language) =>

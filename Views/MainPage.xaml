@@ -14,19 +14,23 @@
         <DataTemplate
             x:Key="NavigationItemTemplate"
             x:DataType="viewModels:ShellNavigationItem">
-            <NavigationViewItem Tag="{x:Bind PageType}">
+            <NavigationViewItem
+                x:Name="NavItem"
+                Tag="{x:Bind PageType}">
                 <NavigationViewItem.Content>
-                    <StackPanel Orientation="Horizontal" Spacing="10">
-                        <!-- Lucide берёт цвет из темы (SvgImageSource был всегда чёрным) -->
+                    <StackPanel
+                        Orientation="Horizontal"
+                        Spacing="10">
                         <controls:LucideIcon
                             Kind="{x:Bind Icon}"
                             Size="18"
                             VerticalAlignment="Center"
-                            Foreground="{ThemeResource TextFillColorPrimaryBrush}" />
+                            Foreground="{Binding Foreground, ElementName=NavItem}" />
                         <TextBlock
                             Text="{x:Bind Title}"
                             VerticalAlignment="Center"
                             Tag="NavLabel"
+                            Foreground="{Binding Foreground, ElementName=NavItem}"
                             Visibility="{Binding IsPaneOpen, ElementName=ShellNav, Converter={StaticResource BoolToVisibilityConverter}}" />
                     </StackPanel>
                 </NavigationViewItem.Content>
@@ -36,6 +40,7 @@
 
     <NavigationView
         x:Name="ShellNav"
+        Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
         MenuItemsSource="{x:Bind ViewModel.NavigationItems}"
         MenuItemTemplate="{StaticResource NavigationItemTemplate}"
         PaneDisplayMode="Left"

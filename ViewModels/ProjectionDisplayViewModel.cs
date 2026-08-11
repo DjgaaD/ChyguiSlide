@@ -32,9 +32,13 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
     private ThemePreset? _appliedTheme;
     private ThemeWallpaperPool? _activeWallpaperPool;
     private Func<SectionTransitionMode, Func<Task>, Task>? _playTransitionAsync;
+    private Action? _resetTransitionVisuals;
+    private int _linesApplyVersion;
     private string _lastVisibleLinesKey = string.Empty;
-    private string? _pendingOutgoingCaption;
-    private double _pendingOutgoingFontSize;
+
+    public Guid? AppliedThemeId => _appliedTheme?.Id;
+
+    public ThemePreset? GetCurrentAppliedTheme() => _appliedTheme;
 
     /// <summary>Срабатывает после смены пути фонового медиа (для синхронизации видеоплеера).</summary>
     public event EventHandler? BackgroundMediaChanged;
@@ -44,6 +48,9 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
 
     [ObservableProperty]
     private SectionTransitionMode sectionTransitionMode = SectionTransitionMode.CrossFade;
+
+    [ObservableProperty]
+    private int sectionTransitionDurationMs = 750;
 
     [ObservableProperty]
     private string? outgoingReferenceCaption;
@@ -338,6 +345,9 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
             BeginBackgroundSession();
         }
 
+        var previousThemeId = _appliedTheme?.Id;
+        var hadMediaBackground = IsBackgroundVideoVisible || IsBackgroundImageVisible;
+
         var colors = theme?.Colors ?? ThemeColors.Default;
         _currentColors = colors;
         _appliedTheme = theme;
@@ -359,6 +369,7 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
         System.Diagnostics.Debug.WriteLine($"ApplyTheme: TextAlignment установлен: {TextAlignment}");
 
         SectionTransitionMode = NormalizeTransition(theme?.SectionTransitionMode);
+        SectionTransitionDurationMs = NormalizeTransitionDuration(theme?.SectionTransitionDurationMs);
 
         BackgroundBrush = CreateBrush(colors.Background);
         PrimaryBrush = CreateBrush(colors.Primary);
@@ -372,7 +383,20 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
 
         System.Diagnostics.Debug.WriteLine($"ApplyTheme: BackgroundBrush={BackgroundBrush.Color}, PrimaryBrush={PrimaryBrush.Color}, FontWeight={FontWeight.Weight}, IsBold={theme?.IsBold}");
 
-        ApplyResolvedBackground(forceNewRandom: startNewBackgroundSession);
+        // Важно: фон должен обновляться, даже если theme.Id тот же,
+        // иначе переключение обоев/пула при постоянном фоне может не сработать.
+        // ApplyBackgroundPath сам не перезапускает видео/картинку, если путь тот же,
+        // поэтому здесь безопаснее всегда пересчитывать (кроме SolidColor).
+        var skipBackground =
+            !startNewBackgroundSession
+            && theme is not null
+            && previousThemeId == theme.Id
+            && theme.BackgroundPickMode == ThemeBackgroundPickMode.SolidColor;
+
+        if (!skipBackground)
+        {
+            ApplyResolvedBackground(forceNewRandom: startNewBackgroundSession);
+        }
 
         // Тема применяется без анимации смены слайда
         RefreshLines(_projectionStateService.Current.VisibleLines);
@@ -412,34 +436,68 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
     {
         var previousVideo = BackgroundVideoPath;
         var previousImage = (BackgroundImageSource as BitmapImage)?.UriSource?.LocalPath;
-
-        ClearBackgroundMedia();
-
         var resolved = _themeBackgroundMediaService.ResolveExistingPath(path);
+
         if (resolved is null)
         {
-            if (!string.Equals(previousVideo, BackgroundVideoPath, StringComparison.OrdinalIgnoreCase)
-                || !string.Equals(previousImage, null, StringComparison.OrdinalIgnoreCase))
+            // Не сбрасываем уже играющий фон, если тема не SolidColor и не «пустая».
+            // Иначе повторный ApplyTheme при старте показа гасит видеофон постоянного фона.
+            var shouldClearMedia = _appliedTheme is null
+                || _appliedTheme.BackgroundPickMode == ThemeBackgroundPickMode.SolidColor;
+            if (!shouldClearMedia && (IsBackgroundVideoVisible || IsBackgroundImageVisible))
             {
-                BackgroundMediaChanged?.Invoke(this, EventArgs.Empty);
+                System.Diagnostics.Debug.WriteLine(
+                    "ApplyBackgroundPath: путь не резолвится, оставляем текущий фон");
+                return;
             }
 
+            if (previousVideo is null && !IsBackgroundImageVisible)
+            {
+                return;
+            }
+
+            ClearBackgroundMedia();
+            BackgroundMediaChanged?.Invoke(this, EventArgs.Empty);
             return;
         }
 
         var ext = Path.GetExtension(resolved);
         if (IsImageExtension(ext))
         {
+            if (IsBackgroundImageVisible
+                && string.Equals(previousImage, resolved, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            ClearBackgroundMedia();
             BackgroundImageSource = new BitmapImage(new Uri(resolved, UriKind.Absolute));
             IsBackgroundImageVisible = true;
-        }
-        else if (IsVideoExtension(ext))
-        {
-            BackgroundVideoPath = resolved;
-            IsBackgroundVideoVisible = true;
+            BackgroundMediaChanged?.Invoke(this, EventArgs.Empty);
+            return;
         }
 
-        BackgroundMediaChanged?.Invoke(this, EventArgs.Empty);
+        if (IsVideoExtension(ext))
+        {
+            // Тот же файл уже играет — не гасим Visibility и не дергаем MediaPlayer
+            if (IsBackgroundVideoVisible
+                && string.Equals(previousVideo, resolved, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            ClearBackgroundMedia();
+            BackgroundVideoPath = resolved;
+            IsBackgroundVideoVisible = true;
+            BackgroundMediaChanged?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
+        if (previousVideo is not null || IsBackgroundImageVisible)
+        {
+            ClearBackgroundMedia();
+            BackgroundMediaChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     private void ClearBackgroundMedia()
@@ -486,7 +544,7 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
         }
         else if (value && TextLayoutMode == TextLayoutMode.ShrinkToFit)
         {
-            TextLayoutMode = TextLayoutMode.MaximizeFont;
+            TextLayoutMode = TextLayoutMode.AutoMaxFit;
         }
     }
 
@@ -552,14 +610,32 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
         }
     }
 
-    public void SetTransitionPlayer(Func<SectionTransitionMode, Func<Task>, Task>? playTransitionAsync)
+    public void SetTransitionPlayer(
+        Func<SectionTransitionMode, Func<Task>, Task>? playTransitionAsync,
+        Action? resetTransitionVisuals = null)
     {
         _playTransitionAsync = playTransitionAsync;
+        _resetTransitionVisuals = resetTransitionVisuals;
+    }
+
+    /// <summary>
+    /// Гарантирует видимость текста: сброс opacity слоёв + перерисовка текущего слайда.
+    /// Нужен после сбоя fade и при повторном F5, когда StateChanged не приходит.
+    /// </summary>
+    public void EnsureContentVisible()
+    {
+        _resetTransitionVisuals?.Invoke();
+        var state = _projectionStateService.Current;
+        ReferenceCaption = state.ReferenceCaption;
+        NotifyReferenceVisibility();
+        RefreshLines(state.VisibleLines);
     }
 
     private static SectionTransitionMode NormalizeTransition(SectionTransitionMode? mode)
     {
-        if (mode is SectionTransitionMode.None or SectionTransitionMode.CrossFade)
+        if (mode is SectionTransitionMode.None
+            or SectionTransitionMode.CrossFade
+            or SectionTransitionMode.FadeThrough)
         {
             return mode.Value;
         }
@@ -567,20 +643,20 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
         return SectionTransitionMode.CrossFade;
     }
 
+    private static int NormalizeTransitionDuration(int? ms)
+    {
+        var value = ms is null or <= 0 ? 750 : ms.Value;
+        return Math.Clamp(value, 150, 3000);
+    }
+
     private void UpdateFromState(ProjectionState state)
     {
-        // Запоминаем подпись/кегль ДО смены — для слоя «уходящего» слайда
-        _pendingOutgoingCaption = ReferenceCaption;
-        _pendingOutgoingFontSize = DisplayFontSize;
-
         var previousWasBible = !string.IsNullOrWhiteSpace(ReferenceCaption);
         var nextIsBible = !string.IsNullOrWhiteSpace(state.ReferenceCaption);
 
         SongTitle = state.SongTitle;
         SectionIndex = state.SectionIndex;
         UpdatedAt = state.UpdatedAt.ToLocalTime();
-        ReferenceCaption = state.ReferenceCaption;
-        _ = RefreshBibleReferenceSettingsAsync();
 
         if (previousWasBible != nextIsBible || _activeWallpaperPool is null)
         {
@@ -595,7 +671,8 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
             && !string.IsNullOrEmpty(_lastVisibleLinesKey)
             && Lines.Count > 0; // первый слайд / пустой экран — без кроссфейда (иначе белая вспышка)
 
-        _ = ApplyVisibleLinesAsync(state.VisibleLines, shouldAnimate);
+        // Подпись/строки меняем только внутри apply — иначе до снимка текст уже дёргается
+        _ = ApplyVisibleLinesAsync(state.VisibleLines, state.ReferenceCaption, shouldAnimate);
     }
 
     private static string BuildLinesKey(IReadOnlyList<string>? lines)
@@ -608,10 +685,23 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
         return string.Join('\u001e', lines);
     }
 
-    private async Task ApplyVisibleLinesAsync(IReadOnlyList<string> lines, bool animate)
+    private async Task ApplyVisibleLinesAsync(
+        IReadOnlyList<string> lines,
+        string? referenceCaption,
+        bool animate)
     {
+        var version = ++_linesApplyVersion;
+
         async Task ApplyCoreAsync()
         {
+            if (version != _linesApplyVersion)
+            {
+                return;
+            }
+
+            ReferenceCaption = referenceCaption;
+            NotifyReferenceVisibility();
+
             // Не дёргаем разрешение экрана на каждый слайд — это даёт рывки
             if (TextLayoutMode != TextLayoutMode.ShrinkToFit && DesignWidth <= 1)
             {
@@ -630,9 +720,23 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
             return;
         }
 
-        CaptureOutgoingSnapshot();
-        await _playTransitionAsync(SectionTransitionMode, ApplyCoreAsync).ConfigureAwait(true);
-        ClearOutgoingSnapshot();
+        if (SectionTransitionMode == SectionTransitionMode.CrossFade)
+        {
+            CaptureOutgoingSnapshot();
+        }
+        else
+        {
+            ClearOutgoingSnapshot();
+        }
+
+        try
+        {
+            await _playTransitionAsync(SectionTransitionMode, ApplyCoreAsync).ConfigureAwait(true);
+        }
+        finally
+        {
+            ClearOutgoingSnapshot();
+        }
     }
 
     private void CaptureOutgoingSnapshot()
@@ -648,8 +752,8 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
                 line.Opacity));
         }
 
-        OutgoingReferenceCaption = _pendingOutgoingCaption;
-        OutgoingDisplayFontSize = _pendingOutgoingFontSize > 1 ? _pendingOutgoingFontSize : DisplayFontSize;
+        OutgoingReferenceCaption = ReferenceCaption;
+        OutgoingDisplayFontSize = DisplayFontSize > 1 ? DisplayFontSize : 100;
         NotifyOutgoingReferenceVisibility();
     }
 
@@ -790,7 +894,6 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
         if (lines.Count == 0)
         {
             DisplayFontSize = 100;
-            Lines.Add(new ProjectionLineItem("— пауза —", PrimaryBrush, FontWeight, TextAlignment, 0.7));
             return;
         }
 
