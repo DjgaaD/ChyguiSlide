@@ -1,7 +1,7 @@
 <Project>
   <!-- РђРІС‚РѕРѕР±РЅРѕРІР»СЏРµС‚СЃСЏ Publish-Release.ps1 РёР· version.json / РїР°СЂР°РјРµС‚СЂРѕРІ. -->
   <PropertyGroup>
-    <AppVersion>0.0.4</AppVersion>
+    <AppVersion>0.0.5</AppVersion>
     <AppChannel>beta</AppChannel>
     <Version>$(AppVersion)</Version>
     <AssemblyVersion>$(AppVersion).0</AssemblyVersion>
