@@ -145,6 +145,7 @@ public sealed partial class SettingsPage : Page
             Height = height,
             Child = editorPage
         };
+        AppUiThemeApplier.ApplyToElement(host);
 
         _themeEditorDialog = new ContentDialog
         {
@@ -154,8 +155,7 @@ public sealed partial class SettingsPage : Page
             CloseButtonText = "Закрыть",
             DefaultButton = ContentDialogButton.Primary,
             FullSizeDesired = true,
-            XamlRoot = XamlRoot,
-            RequestedTheme = AppUiThemeApplier.GetCurrentElementTheme()
+            XamlRoot = XamlRoot
         };
 
         if (!createNew)
@@ -175,7 +175,7 @@ public sealed partial class SettingsPage : Page
 
         try
         {
-            await _themeEditorDialog.ShowAsync();
+            await ContentDialogTheme.ShowAsync(_themeEditorDialog);
         }
         finally
         {
@@ -299,7 +299,7 @@ public sealed partial class SettingsPage : Page
             XamlRoot = XamlRoot
         };
 
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        if (await ContentDialogTheme.ShowAsync(dialog) == ContentDialogResult.Primary)
         {
             await ViewModel.RestoreYandexBackupCommand.ExecuteAsync(null);
         }

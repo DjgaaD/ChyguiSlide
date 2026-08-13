@@ -25,7 +25,7 @@ $vi = Get-ChyguiSlideVersionInfo -Root $Root
 if ([string]::IsNullOrWhiteSpace($Version)) { $Version = $vi.Version }
 if ([string]::IsNullOrWhiteSpace($Channel)) { $Channel = $vi.Channel }
 $label = if ($Channel -eq "release") { $Version } else { "$Version-$Channel" }
-$displayName = if ($Channel -eq "release") { "ChyguiSlide" } else { "ChyguiSlide ($Channel)" }
+$displayName = if ($Channel -eq "release") { "Чугуй Слайды" } else { "Чугуй Слайды ($Channel)" }
 
 $IssPath = Join-Path $Root "installer\ChyguiSlide.iss"
 $PublishDir = Join-Path $Root "artifacts\release\win-x64"

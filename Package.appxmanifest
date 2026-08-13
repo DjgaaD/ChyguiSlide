@@ -10,19 +10,19 @@
   <Identity
     Name="ChyguiSlide.Church.T9"
     Publisher="CN=ChyguiSlide"
-    Version="0.0.3.0" />
+    Version="0.0.4.0" />
 
   <mp:PhoneIdentity PhoneProductId="a198f82d-4f09-4da0-878b-2911f3ce5ffd" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
   <Properties>
-    <DisplayName>ChyguiSlide</DisplayName>
-    <PublisherDisplayName>ChyguiSlide</PublisherDisplayName>
+    <DisplayName>Чугуй Слайды</DisplayName>
+    <PublisherDisplayName>Чугуй Слайды</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
 
   <Dependencies>
-    <TargetDeviceFamily Name="Windows.Universal" MinVersion="0.0.3.0" MaxVersionTested="10.0.19041.0" />
-    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="0.0.3.0" MaxVersionTested="10.0.19041.0" />
+    <TargetDeviceFamily Name="Windows.Universal" MinVersion="0.0.4.0" MaxVersionTested="10.0.19041.0" />
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="0.0.4.0" MaxVersionTested="10.0.19041.0" />
   </Dependencies>
 
   <Resources>
@@ -34,7 +34,7 @@
       Executable="$targetnametoken$.exe"
       EntryPoint="$targetentrypoint$">
       <uap:VisualElements
-        DisplayName="ChyguiSlide"
+        DisplayName="Чугуй Слайды"
         Description="Проекция песен и Библии для богослужения"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"

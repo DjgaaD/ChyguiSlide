@@ -30,7 +30,7 @@ $vi = Get-ChyguiSlideVersionInfo -Root $Root
 if ([string]::IsNullOrWhiteSpace($Version)) { $Version = $vi.Version }
 if ([string]::IsNullOrWhiteSpace($Channel)) { $Channel = $vi.Channel }
 $VersionLabel = if ($Channel -eq "release") { $Version } else { "$Version-$Channel" }
-$DisplayName = if ($Channel -eq "release") { "ChyguiSlide" } else { "ChyguiSlide ($Channel)" }
+$DisplayName = if ($Channel -eq "release") { "Чугуй Слайды" } else { "Чугуй Слайды ($Channel)" }
 
 # Держим ChyguiSlide.Version.props в синхроне с version.json / параметрами
 $propsPath = Join-Path $Root "ChyguiSlide.Version.props"
@@ -144,8 +144,14 @@ if (-not $csc) {
 }
 
 $launcherOut = Join-Path $PublishDir "ChyguiSlide.exe"
+$iconPath = Join-Path $Root "Assets\AppIcon.ico"
+$cscArgs = @("/nologo", "/target:winexe", "/optimize+", "/reference:System.Windows.Forms.dll", "/out:$launcherOut")
+if (Test-Path $iconPath) {
+    $cscArgs += "/win32icon:$iconPath"
+}
+$cscArgs += $LauncherSrc
 Write-Host "Building launcher..."
-& $csc /nologo /target:winexe /optimize+ /reference:System.Windows.Forms.dll /out:$launcherOut $LauncherSrc
+& $csc @cscArgs
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path $launcherOut)) {
     throw "Launcher compile failed"
 }

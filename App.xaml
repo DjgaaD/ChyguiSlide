@@ -13,19 +13,26 @@
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
                 <ResourceDictionary Source="Styles/SelectableCardListStyles.xaml" />
             </ResourceDictionary.MergedDictionaries>
-            <!-- Other app resources here -->
-            <Color x:Key="Primary">#512BD4</Color>
 
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <Color x:Key="StrokeColorSecondary">#33000000</Color>
+                    <SolidColorBrush x:Key="StrokeColorSecondaryBrush" Color="{StaticResource StrokeColorSecondary}" />
+                    <Color x:Key="StrokeColorDefault">#14000000</Color>
+                    <SolidColorBrush x:Key="StrokeColorDefaultBrush" Color="{StaticResource StrokeColorDefault}" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Default">
+                    <Color x:Key="StrokeColorSecondary">#33FFFFFF</Color>
+                    <SolidColorBrush x:Key="StrokeColorSecondaryBrush" Color="{StaticResource StrokeColorSecondary}" />
+                    <Color x:Key="StrokeColorDefault">#14FFFFFF</Color>
+                    <SolidColorBrush x:Key="StrokeColorDefaultBrush" Color="{StaticResource StrokeColorDefault}" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+
+            <Color x:Key="Primary">#512BD4</Color>
             <SolidColorBrush x:Key="PrimaryBrush" Color="{StaticResource Primary}" />
             <SolidColorBrush x:Key="WhiteBrush" Color="White" />
             <SolidColorBrush x:Key="BlackBrush" Color="Black" />
-            <!-- Fallback for missing WinAppSDK theme resource in some environments -->
-            <Color x:Key="StrokeColorSecondary">#33000000</Color>
-            <SolidColorBrush x:Key="StrokeColorSecondaryBrush"
-                             Color="{StaticResource StrokeColorSecondary}" />
-            <Color x:Key="StrokeColorDefault">#14000000</Color>
-            <SolidColorBrush x:Key="StrokeColorDefaultBrush"
-                             Color="{StaticResource StrokeColorDefault}" />
             <Color x:Key="AccentFillColorPrimary">#FF512BD4</Color>
             <SolidColorBrush x:Key="AccentFillColorPrimaryBrush"
                              Color="{StaticResource AccentFillColorPrimary}" />
@@ -52,7 +59,7 @@
                 <Setter Property="CornerRadius"
                         Value="8" />
                 <Setter Property="Foreground"
-                        Value="{StaticResource WhiteBrush}" />
+                        Value="{ThemeResource TextOnAccentFillColorPrimaryBrush}" />
             </Style>
         </ResourceDictionary>
     </Application.Resources>

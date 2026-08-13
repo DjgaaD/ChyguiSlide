@@ -78,6 +78,9 @@ public static class AppVersionInfo
             ? $"{Version} {Channel}"
             : Version;
 
-    /// <summary>Полная метка: «ChyguiSlide 0.0.1 beta».</summary>
-    public static string ProductLabel => $"ChyguiSlide {DisplayVersion}";
+    /// <summary>Видимое название приложения (ярлыки, заголовок, «О нас»).</summary>
+    public const string ProductName = "Чугуй Слайды";
+
+    /// <summary>Полная метка: «Чугуй Слайды 0.0.1 beta».</summary>
+    public static string ProductLabel => $"{ProductName} {DisplayVersion}";
 }

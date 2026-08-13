@@ -26,9 +26,9 @@ function Get-ChyguiSlideVersionInfo {
 
     $label = if ($channel -eq "release") { $version } else { "$version-$channel" }
     $displayName = if ($channel -eq "release") {
-        "ChyguiSlide"
+        "Чугуй Слайды"
     } else {
-        "ChyguiSlide ($channel)"
+        "Чугуй Слайды ($channel)"
     }
 
     [pscustomobject]@{

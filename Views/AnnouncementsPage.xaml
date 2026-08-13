@@ -10,151 +10,199 @@
     Loaded="OnPageLoaded"
     mc:Ignorable="d">
 
-    <Grid Margin="24,16" RowSpacing="12" ColumnSpacing="12">
-        <Grid.Resources>
-            <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
-            <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
-        </Grid.Resources>
-
+    <Grid Margin="24,16,24,16" RowSpacing="12" ColumnSpacing="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="320" />
+            <ColumnDefinition Width="420" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
-        <StackPanel Grid.Row="0" Grid.ColumnSpan="2" Spacing="4">
-            <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="Объявления" />
-            <TextBlock
-                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                Text="Быстрые — набрать и показать. Постоянные — сохранить и использовать снова. Пустая строка в тексте = новый слайд."
-                TextWrapping="Wrap" />
-        </StackPanel>
+        <Grid.Resources>
+            <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
+            <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+        </Grid.Resources>
 
-        <!-- Список постоянных -->
+        <Border
+            Grid.Row="0"
+            Grid.Column="0"
+            Grid.ColumnSpan="2"
+            Background="{ThemeResource LayerFillColorDefaultBrush}"
+            CornerRadius="12"
+            Padding="16">
+            <StackPanel Spacing="12">
+                <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="Объявления" />
+
+                <AutoSuggestBox
+                    x:Name="SearchBox"
+                    VerticalAlignment="Center"
+                    PlaceholderText="Поиск по заголовку или тексту…"
+                    QuerySubmitted="OnSearchBoxQuerySubmitted"
+                    TextChanged="OnSearchBoxTextChanged" />
+
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button
+                        Click="OnAddToQuickPlaylistClicked"
+                        Command="{Binding AddToQuickPlaylistCommand}"
+                        Visibility="{Binding ShowAddToQuickPlaylistButton, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <icons:LucideIcon Kind="list" Size="16" />
+                            <TextBlock Text="В плейлист" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Button
+                        IsEnabled="False"
+                        Style="{StaticResource AccentButtonStyle}"
+                        Visibility="{Binding ShowInQuickPlaylistBadge, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <icons:LucideIcon Kind="check" Size="16" />
+                            <TextBlock Text="В плейлисте" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button Click="OnQuickAnnouncementClicked">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <icons:LucideIcon Kind="megaphone" Size="16" />
+                            <TextBlock Text="Быстрое объявление" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button Click="OnCreateAnnouncementClicked">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <icons:LucideIcon Kind="plus" Size="16" />
+                            <TextBlock Text="Добавить" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button
+                        Click="OnEditAnnouncementClicked"
+                        IsEnabled="{Binding HasSelectedAnnouncement}"
+                        Visibility="{Binding HasSelectedAnnouncement, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <icons:LucideIcon Kind="pencil" Size="16" />
+                            <TextBlock Text="Изменить" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button
+                        Click="OnDeleteAnnouncementClicked"
+                        IsEnabled="{Binding HasSelectedAnnouncement}"
+                        Visibility="{Binding HasSelectedAnnouncement, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <icons:LucideIcon Kind="trash-2" Size="16" />
+                            <TextBlock Text="Удалить" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button
+                        Command="{Binding TogglePinCommand}"
+                        IsEnabled="{Binding HasSelectedAnnouncement}"
+                        Visibility="{Binding HasSelectedAnnouncement, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <icons:LucideIcon Kind="pin" Size="16" />
+                            <TextBlock Text="Закрепить" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <ProgressRing
+                        Width="24"
+                        Height="24"
+                        VerticalAlignment="Center"
+                        IsActive="{Binding IsBusy}" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
         <Border
             Grid.Row="1"
             Grid.Column="0"
             Background="{ThemeResource LayerFillColorDefaultBrush}"
-            CornerRadius="12"
-            Padding="8">
-            <Grid RowSpacing="8">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto" />
-                    <RowDefinition Height="*" />
-                </Grid.RowDefinitions>
-
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <TextBlock
-                        VerticalAlignment="Center"
-                        FontWeight="SemiBold"
-                        Text="Постоянные" />
-                    <Button
-                        Content="+"
-                        ToolTipService.ToolTip="Новое"
-                        Command="{Binding NewPermanentCommand}" />
-                    <ProgressRing
-                        Width="20"
-                        Height="20"
-                        IsActive="{Binding IsBusy}" />
-                </StackPanel>
-
-                <ListView
-                    Grid.Row="1"
-                    ItemsSource="{Binding PermanentItems}"
-                    SelectedItem="{Binding SelectedPermanent, Mode=TwoWay}"
-                    SelectionMode="Single">
-                    <ListView.ItemTemplate>
-                        <DataTemplate>
-                            <StackPanel Spacing="2" Padding="4,6">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <icons:LucideIcon
-                                        Kind="pin"
-                                        Size="12"
-                                        Visibility="{Binding IsPinned, Converter={StaticResource BoolToVisibilityConverter}}" />
-                                    <TextBlock
-                                        FontWeight="SemiBold"
-                                        Text="{Binding Title}"
-                                        TextTrimming="CharacterEllipsis" />
-                                </StackPanel>
+            CornerRadius="12">
+            <ListView
+                x:Name="AnnouncementListView"
+                Margin="8"
+                ItemsSource="{Binding Items}"
+                SelectedItem="{Binding SelectedAnnouncement, Mode=TwoWay}"
+                SelectionMode="Single"
+                ScrollViewer.VerticalScrollBarVisibility="Auto">
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="Padding" Value="8,4" />
+                        <Setter Property="MinHeight" Value="0" />
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                        <Setter Property="BorderThickness" Value="0,0,0,1" />
+                        <Setter Property="BorderBrush" Value="{ThemeResource StrokeColorDefaultBrush}" />
+                    </Style>
+                </ListView.ItemContainerStyle>
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Spacing="4">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <icons:LucideIcon
+                                    Kind="pin"
+                                    Size="14"
+                                    Visibility="{Binding IsPinned, Converter={StaticResource BoolToVisibilityConverter}}" />
                                 <TextBlock
-                                    FontSize="12"
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    Text="{Binding Content}"
-                                    TextTrimming="CharacterEllipsis"
-                                    MaxLines="2" />
+                                    FontSize="16"
+                                    FontWeight="SemiBold"
+                                    Text="{Binding Title}"
+                                    TextTrimming="CharacterEllipsis" />
                             </StackPanel>
-                        </DataTemplate>
-                    </ListView.ItemTemplate>
-                </ListView>
-            </Grid>
+                            <TextBlock
+                                FontSize="13"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                MaxLines="2"
+                                Text="{Binding Content}"
+                                TextTrimming="CharacterEllipsis"
+                                TextWrapping="Wrap" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
         </Border>
 
-        <!-- Правая колонка: быстрое + редактор -->
-        <ScrollViewer Grid.Row="1" Grid.Column="1" VerticalScrollBarVisibility="Auto">
-            <StackPanel Spacing="16">
-                <!-- Быстрое -->
-                <Border
-                    Background="{ThemeResource LayerFillColorDefaultBrush}"
-                    CornerRadius="12"
-                    Padding="16">
-                    <StackPanel Spacing="10">
-                        <TextBlock FontWeight="SemiBold" Text="Быстрое объявление" />
-                        <TextBox
-                            Header="Заголовок (необязательно)"
-                            PlaceholderText="Например: Собрание молодёжи"
-                            Text="{Binding QuickTitle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                        <TextBox
-                            Header="Текст"
-                            PlaceholderText="Текст объявления. Пустая строка — следующий слайд."
-                            AcceptsReturn="True"
-                            TextWrapping="Wrap"
-                            MinHeight="120"
-                            Text="{Binding QuickContent, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Button
-                                Content="Показать на экране"
-                                Style="{StaticResource AccentButtonStyle}"
-                                Command="{Binding ShowQuickCommand}" />
-                            <Button
-                                Content="Сохранить в постоянные"
-                                Command="{Binding SaveQuickCommand}" />
-                        </StackPanel>
-                    </StackPanel>
-                </Border>
+        <Border
+            Grid.Row="1"
+            Grid.Column="1"
+            Background="{ThemeResource LayerFillColorDefaultBrush}"
+            CornerRadius="12">
+            <Grid Margin="16">
+                <TextBlock
+                    Margin="0,8"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="Выберите объявление, чтобы увидеть слайды."
+                    Visibility="{Binding SelectedAnnouncement, Converter={StaticResource NullToVisibilityConverter}, ConverterParameter=Invert}" />
 
-                <!-- Редактор постоянного -->
-                <Border
-                    Background="{ThemeResource LayerFillColorDefaultBrush}"
-                    CornerRadius="12"
-                    Padding="16">
-                    <StackPanel Spacing="10">
-                        <TextBlock FontWeight="SemiBold" Text="Редактор постоянного" />
-                        <TextBox
-                            Header="Заголовок"
-                            Text="{Binding EditTitle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                        <TextBox
-                            Header="Текст"
-                            AcceptsReturn="True"
-                            TextWrapping="Wrap"
-                            MinHeight="160"
-                            Text="{Binding EditContent, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                        <CheckBox
-                            Content="Закрепить вверху списка"
-                            IsChecked="{Binding EditIsPinned, Mode=TwoWay}" />
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Button
-                                Content="Показать на экране"
-                                Style="{StaticResource AccentButtonStyle}"
-                                Command="{Binding ShowSelectedCommand}" />
-                            <Button Content="Сохранить" Command="{Binding SaveSelectedCommand}" />
-                            <Button Content="Удалить" Command="{Binding DeleteSelectedCommand}" />
-                        </StackPanel>
+                <Grid Visibility="{Binding SelectedAnnouncement, Converter={StaticResource NullToVisibilityConverter}}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <StackPanel
+                        Margin="0,0,0,12"
+                        Orientation="Horizontal"
+                        Spacing="12"
+                        VerticalAlignment="Center">
+                        <TextBlock
+                            Style="{StaticResource SubtitleTextBlockStyle}"
+                            Text="{Binding SelectedAnnouncement.Title}" />
+                        <Button
+                            Content="Показать на экране"
+                            Command="{Binding StartProjectionCommand}" />
                     </StackPanel>
-                </Border>
-            </StackPanel>
-        </ScrollViewer>
+
+                    <ListView
+                        Grid.Row="1"
+                        ItemContainerStyle="{StaticResource SelectableCardListViewItemStyle}"
+                        ItemTemplate="{StaticResource SelectableCardSelectedTemplate}"
+                        ItemsSource="{Binding SlidesPreview}"
+                        SelectedItem="{Binding SelectedSlidePreview, Mode=TwoWay}"
+                        SelectionMode="Single" />
+                </Grid>
+            </Grid>
+        </Border>
     </Grid>
 </Page>

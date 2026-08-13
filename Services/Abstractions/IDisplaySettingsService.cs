@@ -35,5 +35,7 @@ public interface IDisplaySettingsService
     Task SetBibleReferenceAlignmentAsync(string alignment);
     Task<AppUiThemeMode> GetAppUiThemeAsync();
     Task SetAppUiThemeAsync(AppUiThemeMode mode);
+    Task<BiblePickerLayoutMode> GetBiblePickerLayoutAsync();
+    Task SetBiblePickerLayoutAsync(BiblePickerLayoutMode mode);
 }
 

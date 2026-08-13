@@ -21,7 +21,7 @@ internal static class Program
             {
                 MessageBox.Show(
                     "Не найден файл:\n" + appExe + "\n\nРаспакуйте архив целиком.",
-                    "ChyguiSlide",
+                    "Чугуй Слайды",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
                 return;
@@ -36,7 +36,7 @@ internal static class Program
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.Message, "ChyguiSlide", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(ex.Message, "Чугуй Слайды", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 }

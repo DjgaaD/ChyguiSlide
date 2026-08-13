@@ -17,6 +17,9 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <RootNamespace>ChyguiSlide</RootNamespace>
         <AssemblyName>ChyguiSlide</AssemblyName>
+        <Product>Чугуй Слайды</Product>
+        <AssemblyTitle>Чугуй Слайды</AssemblyTitle>
+        <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
 
         <!-- App Options -->
         <UseRidGraph>true</UseRidGraph>
@@ -47,6 +50,7 @@
         <Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
         <Content Include="Assets\StoreLogo.png" />
         <Content Include="Assets\Wide310x150Logo.scale-200.png" />
+        <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" TargetPath="Assets\AppIcon.ico" />
         <Content Include="Assets\Bible\bible.json" CopyToOutputDirectory="PreserveNewest" />
         <Content Include="Assets\Seed\PesnVozr\pv3300.sps" CopyToOutputDirectory="PreserveNewest" />
         <Content Include="Assets\Lucide\*.svg" CopyToOutputDirectory="PreserveNewest" />

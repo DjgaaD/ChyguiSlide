@@ -1263,6 +1263,21 @@ public sealed class DisplaySettingsService : IDisplaySettingsService
         await WriteSettingAsync(AppUiThemeKey, mode.ToString()).ConfigureAwait(false);
     }
 
+    private const string BiblePickerLayoutKey = "BiblePickerLayout";
+
+    public async Task<BiblePickerLayoutMode> GetBiblePickerLayoutAsync()
+    {
+        var raw = await ReadSettingAsync(BiblePickerLayoutKey).ConfigureAwait(false);
+        return Enum.TryParse<BiblePickerLayoutMode>(raw, true, out var mode)
+            ? mode
+            : BiblePickerLayoutMode.Lists;
+    }
+
+    public async Task SetBiblePickerLayoutAsync(BiblePickerLayoutMode mode)
+    {
+        await WriteSettingAsync(BiblePickerLayoutKey, mode.ToString()).ConfigureAwait(false);
+    }
+
     private Task<string?> ReadSettingAsync(string key)
     {
         try

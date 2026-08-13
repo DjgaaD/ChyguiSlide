@@ -17,15 +17,20 @@ namespace ChyguiSlide.ViewModels;
 public partial class BibleViewModel : ObservableObject
 {
     private readonly IBibleService _bibleService;
+    private readonly IDisplaySettingsService _displaySettings;
     private readonly IServiceProvider _services;
     private readonly List<BibleBook> _allBooks = new();
     private bool _suppressAutoChapterSelect;
     private bool _pendingSearchFocusRequest;
     public event Action? SearchFocusRequested;
 
-    public BibleViewModel(IBibleService bibleService, IServiceProvider services)
+    public BibleViewModel(
+        IBibleService bibleService,
+        IDisplaySettingsService displaySettings,
+        IServiceProvider services)
     {
         _bibleService = bibleService;
+        _displaySettings = displaySettings;
         _services = services;
 
         Books = new ObservableCollection<BibleBook>();
@@ -78,6 +83,12 @@ public partial class BibleViewModel : ObservableObject
     [ObservableProperty]
     private BibleVerseItem? selectedVerse;
 
+    [ObservableProperty]
+    private BiblePickerLayoutMode pickerLayout = BiblePickerLayoutMode.Lists;
+
+    public bool IsListPickerLayout => PickerLayout == BiblePickerLayoutMode.Lists;
+    public bool IsGridPickerLayout => PickerLayout == BiblePickerLayoutMode.Grid;
+
     public IAsyncRelayCommand StartProjectionCommand { get; }
     public IAsyncRelayCommand<BibleVerseItem?> ProjectFromVerseCommand { get; }
 
@@ -106,6 +117,8 @@ public partial class BibleViewModel : ObservableObject
 
     public async Task InitializeAsync()
     {
+        await RefreshPickerLayoutAsync();
+
         if (Books.Count > 0)
         {
             return;
@@ -132,6 +145,25 @@ public partial class BibleViewModel : ObservableObject
         {
             IsBusy = false;
         }
+    }
+
+    public async Task RefreshPickerLayoutAsync()
+    {
+        try
+        {
+            PickerLayout = await _displaySettings.GetBiblePickerLayoutAsync();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"RefreshPickerLayoutAsync: {ex.Message}");
+            PickerLayout = BiblePickerLayoutMode.Lists;
+        }
+    }
+
+    partial void OnPickerLayoutChanged(BiblePickerLayoutMode value)
+    {
+        OnPropertyChanged(nameof(IsListPickerLayout));
+        OnPropertyChanged(nameof(IsGridPickerLayout));
     }
 
     partial void OnSelectedTestamentFilterChanged(BibleTestamentFilterItem? value)

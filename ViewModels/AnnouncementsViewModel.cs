@@ -16,24 +16,26 @@ namespace ChyguiSlide.ViewModels;
 public partial class AnnouncementsViewModel : ObservableObject
 {
     private readonly IServiceProvider _services;
+    private IReadOnlyList<Announcement> _allItems = Array.Empty<Announcement>();
+    private bool _quickPlaylistHooked;
 
     public AnnouncementsViewModel(IServiceProvider services)
     {
         _services = services;
 
-        PermanentItems = new ObservableCollection<Announcement>();
+        Items = new ObservableCollection<Announcement>();
+        SlidesPreview = new ObservableCollection<AnnouncementSlidePreviewItem>();
 
         LoadCommand = new AsyncRelayCommand(LoadAsync);
-        ShowQuickCommand = new AsyncRelayCommand(ShowQuickAsync, CanShowQuick);
-        SaveQuickCommand = new AsyncRelayCommand(SaveQuickAsync, CanShowQuick);
-        ShowSelectedCommand = new AsyncRelayCommand(ShowSelectedAsync, CanShowEditor);
-        SaveSelectedCommand = new AsyncRelayCommand(SaveSelectedAsync, () => !string.IsNullOrWhiteSpace(EditContent));
-        DeleteSelectedCommand = new AsyncRelayCommand(DeleteSelectedAsync, () => SelectedPermanent is not null);
-        NewPermanentCommand = new RelayCommand(StartNewPermanent);
-        TogglePinCommand = new AsyncRelayCommand(TogglePinAsync, () => SelectedPermanent is not null);
+        SearchCommand = new AsyncRelayCommand<string?>(SearchAsync);
+        StartProjectionCommand = new AsyncRelayCommand(StartProjectionAsync, () => SelectedAnnouncement is not null);
+        TogglePinCommand = new AsyncRelayCommand(TogglePinAsync, () => SelectedAnnouncement is not null);
+        AddToQuickPlaylistCommand = new RelayCommand(AddToQuickPlaylist, () => SelectedAnnouncement is not null);
     }
 
-    public ObservableCollection<Announcement> PermanentItems { get; }
+    public ObservableCollection<Announcement> Items { get; }
+
+    public ObservableCollection<AnnouncementSlidePreviewItem> SlidesPreview { get; }
 
     [ObservableProperty]
     private bool isBusy;
@@ -42,71 +44,86 @@ public partial class AnnouncementsViewModel : ObservableObject
     private string? statusMessage;
 
     [ObservableProperty]
-    private string quickTitle = string.Empty;
+    private string? searchTerm;
 
     [ObservableProperty]
-    private string quickContent = string.Empty;
+    private Announcement? selectedAnnouncement;
 
     [ObservableProperty]
-    private Announcement? selectedPermanent;
+    private AnnouncementSlidePreviewItem? selectedSlidePreview;
 
     [ObservableProperty]
-    private string editTitle = string.Empty;
+    private bool isSelectedInQuickPlaylist;
 
-    [ObservableProperty]
-    private string editContent = string.Empty;
+    public bool HasSelectedAnnouncement => SelectedAnnouncement is not null;
 
-    [ObservableProperty]
-    private bool editIsPinned;
+    public bool ShowAddToQuickPlaylistButton =>
+        HasSelectedAnnouncement && !IsSelectedInQuickPlaylist;
+
+    public bool ShowInQuickPlaylistBadge =>
+        HasSelectedAnnouncement && IsSelectedInQuickPlaylist;
 
     public IAsyncRelayCommand LoadCommand { get; }
-    public IAsyncRelayCommand ShowQuickCommand { get; }
-    public IAsyncRelayCommand SaveQuickCommand { get; }
-    public IAsyncRelayCommand ShowSelectedCommand { get; }
-    public IAsyncRelayCommand SaveSelectedCommand { get; }
-    public IAsyncRelayCommand DeleteSelectedCommand { get; }
-    public IRelayCommand NewPermanentCommand { get; }
+    public IAsyncRelayCommand<string?> SearchCommand { get; }
+    public IAsyncRelayCommand StartProjectionCommand { get; }
     public IAsyncRelayCommand TogglePinCommand { get; }
+    public IRelayCommand AddToQuickPlaylistCommand { get; }
 
-    public async Task InitializeAsync() => await LoadAsync();
-
-    partial void OnQuickContentChanged(string value) => NotifyQuickCommands();
-    partial void OnQuickTitleChanged(string value) => NotifyQuickCommands();
-
-    partial void OnEditContentChanged(string value) => SaveSelectedCommand.NotifyCanExecuteChanged();
-
-    partial void OnSelectedPermanentChanged(Announcement? value)
+    public async Task InitializeAsync()
     {
-        if (value is null)
-        {
-            // Не очищаем редактор при «Новое» — StartNewPermanent сам ставит поля
-        }
-        else
-        {
-            EditTitle = value.Title;
-            EditContent = value.Content;
-            EditIsPinned = value.IsPinned;
-        }
+        EnsureQuickPlaylistHook();
+        await LoadAsync();
+    }
 
-        ShowSelectedCommand.NotifyCanExecuteChanged();
-        SaveSelectedCommand.NotifyCanExecuteChanged();
-        DeleteSelectedCommand.NotifyCanExecuteChanged();
+    partial void OnSelectedAnnouncementChanged(Announcement? value)
+    {
+        LoadSlidesPreview(value);
+        OnPropertyChanged(nameof(HasSelectedAnnouncement));
+        OnPropertyChanged(nameof(ShowAddToQuickPlaylistButton));
+        OnPropertyChanged(nameof(ShowInQuickPlaylistBadge));
+        StartProjectionCommand.NotifyCanExecuteChanged();
         TogglePinCommand.NotifyCanExecuteChanged();
+        AddToQuickPlaylistCommand.NotifyCanExecuteChanged();
+        RefreshQuickPlaylistMembership();
     }
 
-    private void NotifyQuickCommands()
+    partial void OnIsSelectedInQuickPlaylistChanged(bool value)
     {
-        ShowQuickCommand.NotifyCanExecuteChanged();
-        SaveQuickCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(ShowAddToQuickPlaylistButton));
+        OnPropertyChanged(nameof(ShowInQuickPlaylistBadge));
     }
 
-    private bool CanShowQuick() => !string.IsNullOrWhiteSpace(QuickContent);
+    partial void OnSelectedSlidePreviewChanged(AnnouncementSlidePreviewItem? value)
+    {
+        foreach (var slide in SlidesPreview)
+        {
+            slide.IsSelected = ReferenceEquals(slide, value);
+        }
+    }
 
-    private bool CanShowEditor() =>
-        !string.IsNullOrWhiteSpace(EditContent) || SelectedPermanent is not null;
+    private void EnsureQuickPlaylistHook()
+    {
+        if (_quickPlaylistHooked)
+        {
+            return;
+        }
 
-    private IAnnouncementService CreateService(IServiceScope scope) =>
-        scope.ServiceProvider.GetRequiredService<IAnnouncementService>();
+        var live = _services.GetRequiredService<LiveControlViewModel>();
+        live.QuickEntries.CollectionChanged += (_, _) => RefreshQuickPlaylistMembership();
+        _quickPlaylistHooked = true;
+    }
+
+    private void RefreshQuickPlaylistMembership()
+    {
+        if (SelectedAnnouncement is null)
+        {
+            IsSelectedInQuickPlaylist = false;
+            return;
+        }
+
+        var live = _services.GetRequiredService<LiveControlViewModel>();
+        IsSelectedInQuickPlaylist = live.IsSongInQuickPlaylist(SelectedAnnouncement.Id);
+    }
 
     private async Task LoadAsync()
     {
@@ -119,22 +136,10 @@ public partial class AnnouncementsViewModel : ObservableObject
         {
             IsBusy = true;
             using var scope = _services.CreateScope();
-            var items = await CreateService(scope).GetPermanentAsync();
-            var selectedId = SelectedPermanent?.Id;
-
-            PermanentItems.Clear();
-            foreach (var item in items)
-            {
-                PermanentItems.Add(item);
-            }
-
-            if (selectedId is Guid id)
-            {
-                SelectedPermanent = PermanentItems.FirstOrDefault(a => a.Id == id);
-            }
-
-            StatusMessage = PermanentItems.Count > 0
-                ? $"Постоянных объявлений: {PermanentItems.Count}"
+            _allItems = await CreateService(scope).GetPermanentAsync();
+            ApplyFilter();
+            StatusMessage = Items.Count > 0
+                ? $"Объявлений: {Items.Count}"
                 : "Пока нет сохранённых объявлений";
         }
         catch (Exception ex)
@@ -148,22 +153,96 @@ public partial class AnnouncementsViewModel : ObservableObject
         }
     }
 
-    private async Task ShowQuickAsync()
+    private Task SearchAsync(string? query)
     {
-        if (!CanShowQuick())
+        SearchTerm = query;
+        ApplyFilter();
+        return Task.CompletedTask;
+    }
+
+    private void ApplyFilter()
+    {
+        var selectedId = SelectedAnnouncement?.Id;
+        IEnumerable<Announcement> query = _allItems;
+
+        if (!string.IsNullOrWhiteSpace(SearchTerm))
+        {
+            var term = SearchTerm.Trim();
+            query = query.Where(a =>
+                (a.Title?.Contains(term, StringComparison.CurrentCultureIgnoreCase) ?? false) ||
+                (a.Content?.Contains(term, StringComparison.CurrentCultureIgnoreCase) ?? false));
+        }
+
+        var list = query
+            .OrderByDescending(a => a.IsPinned)
+            .ThenBy(a => a.SortOrder)
+            .ThenByDescending(a => a.UpdatedAt)
+            .ToList();
+
+        Items.Clear();
+        foreach (var item in list)
+        {
+            Items.Add(item);
+        }
+
+        SelectedAnnouncement = selectedId is Guid id
+            ? Items.FirstOrDefault(a => a.Id == id)
+            : Items.FirstOrDefault();
+    }
+
+    private void LoadSlidesPreview(Announcement? announcement)
+    {
+        SlidesPreview.Clear();
+        SelectedSlidePreview = null;
+
+        if (announcement is null)
         {
             return;
         }
 
-        await ProjectContentAsync(
-            string.IsNullOrWhiteSpace(QuickTitle) ? "Объявление" : QuickTitle.Trim(),
-            QuickContent);
-        StatusMessage = "Быстрое объявление на экране";
+        var song = BuildEphemeralSong(announcement);
+        var sections = song.Sections?.OrderBy(s => s.Order).ToList() ?? new List<SongSection>();
+        for (var i = 0; i < sections.Count; i++)
+        {
+            var section = sections[i];
+            SlidesPreview.Add(new AnnouncementSlidePreviewItem(
+                i,
+                section.Heading ?? $"Слайд {i + 1}",
+                string.IsNullOrWhiteSpace(section.Content) ? string.Empty : section.Content.Trim()));
+        }
+
+        SelectedSlidePreview = SlidesPreview.FirstOrDefault();
     }
 
-    private async Task SaveQuickAsync()
+    private async Task StartProjectionAsync()
     {
-        if (!CanShowQuick())
+        if (SelectedAnnouncement is null)
+        {
+            return;
+        }
+
+        var live = _services.GetRequiredService<LiveControlViewModel>();
+        var song = BuildEphemeralSong(SelectedAnnouncement);
+        var startIndex = SelectedSlidePreview?.ListIndex ?? 0;
+        await live.StartSongFromCatalogAsync(song, startIndex);
+        StatusMessage = $"На экране: «{song.Title}»";
+    }
+
+    private void AddToQuickPlaylist()
+    {
+        if (SelectedAnnouncement is null)
+        {
+            return;
+        }
+
+        var live = _services.GetRequiredService<LiveControlViewModel>();
+        live.AddSongToQuickPlaylist(BuildEphemeralSong(SelectedAnnouncement));
+        RefreshQuickPlaylistMembership();
+    }
+
+    public async Task TogglePinAsync()
+    {
+        if (SelectedAnnouncement is null)
         {
             return;
         }
@@ -171,16 +250,20 @@ public partial class AnnouncementsViewModel : ObservableObject
         try
         {
             using var scope = _services.CreateScope();
-            var saved = await CreateService(scope).SaveAsync(new Announcement
+            var service = CreateService(scope);
+            var entity = new Announcement
             {
-                Title = QuickTitle,
-                Content = QuickContent,
-                IsPermanent = true
-            });
+                Id = SelectedAnnouncement.Id,
+                Title = SelectedAnnouncement.Title,
+                Content = SelectedAnnouncement.Content,
+                IsPinned = !SelectedAnnouncement.IsPinned,
+                IsPermanent = true,
+                SortOrder = SelectedAnnouncement.SortOrder
+            };
 
+            await service.SaveAsync(entity);
             await LoadAsync();
-            SelectedPermanent = PermanentItems.FirstOrDefault(a => a.Id == saved.Id);
-            StatusMessage = $"Сохранено: «{saved.Title}»";
+            StatusMessage = entity.IsPinned ? "Объявление закреплено" : "Закрепление снято";
         }
         catch (Exception ex)
         {
@@ -188,135 +271,78 @@ public partial class AnnouncementsViewModel : ObservableObject
         }
     }
 
-    private void StartNewPermanent()
+    public async Task DeleteAsync(Announcement announcement)
     {
-        SelectedPermanent = null;
-        EditTitle = string.Empty;
-        EditContent = string.Empty;
-        EditIsPinned = false;
-        StatusMessage = "Новое объявление — заполните текст и нажмите «Сохранить»";
-        ShowSelectedCommand.NotifyCanExecuteChanged();
-        SaveSelectedCommand.NotifyCanExecuteChanged();
-        DeleteSelectedCommand.NotifyCanExecuteChanged();
-    }
-
-    private async Task ShowSelectedAsync()
-    {
-        var content = !string.IsNullOrWhiteSpace(EditContent)
-            ? EditContent
-            : SelectedPermanent?.Content;
-
-        if (string.IsNullOrWhiteSpace(content))
-        {
-            StatusMessage = "Нет текста для показа";
-            return;
-        }
-
-        var title = !string.IsNullOrWhiteSpace(EditTitle)
-            ? EditTitle.Trim()
-            : SelectedPermanent?.Title ?? "Объявление";
-
-        await ProjectContentAsync(title, content);
-        StatusMessage = $"На экране: «{title}»";
-    }
-
-    private async Task SaveSelectedAsync()
-    {
-        if (string.IsNullOrWhiteSpace(EditContent))
-        {
-            StatusMessage = "Текст объявления не может быть пустым";
-            return;
-        }
-
         try
         {
             using var scope = _services.CreateScope();
-            var entity = SelectedPermanent is null
-                ? new Announcement { Content = EditContent }
-                : new Announcement
-                {
-                    Id = SelectedPermanent.Id,
-                    SortOrder = SelectedPermanent.SortOrder,
-                    Content = EditContent
-                };
+            await CreateService(scope).DeleteAsync(announcement.Id);
+            if (SelectedAnnouncement?.Id == announcement.Id)
+            {
+                SelectedAnnouncement = null;
+            }
 
-            entity.Title = EditTitle;
-            entity.Content = EditContent;
-            entity.IsPinned = EditIsPinned;
-            entity.IsPermanent = true;
-
-            var saved = await CreateService(scope).SaveAsync(entity);
             await LoadAsync();
-            SelectedPermanent = PermanentItems.FirstOrDefault(a => a.Id == saved.Id);
-            StatusMessage = $"Сохранено: «{saved.Title}»";
+            StatusMessage = $"Удалено: «{announcement.Title}»";
         }
         catch (Exception ex)
         {
-            await ErrorDialog.ShowAsync("Ошибка", ex);
+            await ErrorDialog.ShowAsync("Ошибка удаления", ex);
         }
     }
 
-    private async Task DeleteSelectedAsync()
+    public void SelectAnnouncement(Guid id)
     {
-        if (SelectedPermanent is null)
-        {
-            return;
-        }
-
-        try
-        {
-            using var scope = _services.CreateScope();
-            var id = SelectedPermanent.Id;
-            var title = SelectedPermanent.Title;
-            await CreateService(scope).DeleteAsync(id);
-            SelectedPermanent = null;
-            EditTitle = string.Empty;
-            EditContent = string.Empty;
-            EditIsPinned = false;
-            await LoadAsync();
-            StatusMessage = $"Удалено: «{title}»";
-        }
-        catch (Exception ex)
-        {
-            await ErrorDialog.ShowAsync("Ошибка", ex);
-        }
-    }
-
-    private async Task TogglePinAsync()
-    {
-        if (SelectedPermanent is null)
-        {
-            return;
-        }
-
-        EditIsPinned = !EditIsPinned;
-        await SaveSelectedAsync();
+        SelectedAnnouncement = Items.FirstOrDefault(a => a.Id == id)
+                               ?? _allItems.FirstOrDefault(a => a.Id == id);
     }
 
     public async Task StartProjectionFromHotkeyAsync()
     {
-        if (!string.IsNullOrWhiteSpace(EditContent) || SelectedPermanent is not null)
+        if (SelectedAnnouncement is not null)
         {
-            await ShowSelectedAsync();
+            await StartProjectionAsync();
             return;
         }
 
-        if (CanShowQuick())
+        if (!string.IsNullOrWhiteSpace(_lastQuickContent))
         {
-            await ShowQuickAsync();
+            await ShowQuickAsync(_lastQuickContent);
         }
     }
 
-    private async Task ProjectContentAsync(string title, string content)
+    private string _lastQuickContent = string.Empty;
+
+    public async Task ShowQuickAsync(string content)
     {
-        var song = BuildEphemeralSong(title, content);
+        if (string.IsNullOrWhiteSpace(content))
+        {
+            StatusMessage = "Введите текст объявления";
+            return;
+        }
+
+        _lastQuickContent = content.Trim();
+
         var live = _services.GetRequiredService<LiveControlViewModel>();
+        var song = BuildEphemeralSong(Guid.NewGuid(), "Объявление", _lastQuickContent);
         await live.StartSongFromCatalogAsync(song);
+        StatusMessage = "Быстрое объявление на экране";
     }
 
-    internal static Song BuildEphemeralSong(string title, string content)
+    private IAnnouncementService CreateService(IServiceScope scope) =>
+        scope.ServiceProvider.GetRequiredService<IAnnouncementService>();
+
+    internal static Song BuildEphemeralSong(Announcement announcement)
     {
-        var songId = Guid.NewGuid();
+        var title = string.IsNullOrWhiteSpace(announcement.Title)
+            ? "Объявление"
+            : announcement.Title.Trim();
+
+        return BuildEphemeralSong(announcement.Id, title, announcement.Content);
+    }
+
+    internal static Song BuildEphemeralSong(Guid songId, string title, string content)
+    {
         var slides = SplitIntoSlides(content);
         if (slides.Count == 0)
         {

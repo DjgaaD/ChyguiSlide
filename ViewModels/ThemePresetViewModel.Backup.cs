@@ -343,7 +343,7 @@ public sealed partial class ThemePresetEditorViewModel
             var progress = new Progress<string>(msg => BackupStatusMessage = msg);
             await _catalogBackupService.RestoreFromYandexDiskAsync(SelectedYandexBackup.Path, progress);
             BackupStatusMessage =
-                "База восстановлена. Закройте и снова откройте ChyguiSlide, чтобы изменения применились.";
+                "База восстановлена. Закройте и снова откройте Чугуй Слайды, чтобы изменения применились.";
         }
         catch (Exception ex)
         {

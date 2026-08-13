@@ -134,7 +134,7 @@ public sealed partial class CatalogPage : Page
             }
         });
 
-        var showTask = progressDialog.ShowAsync().AsTask();
+        var showTask = ContentDialogTheme.ShowAsync(progressDialog);
         SpsImportSummary summary;
         try
         {
@@ -164,7 +164,7 @@ public sealed partial class CatalogPage : Page
             CloseButtonText = "OK",
             XamlRoot = XamlRoot
         };
-        await doneDialog.ShowAsync();
+        await ContentDialogTheme.ShowAsync(doneDialog);
     }
 
     private async void OnImportFromUrlClicked(object sender, RoutedEventArgs e)
@@ -197,7 +197,7 @@ public sealed partial class CatalogPage : Page
             XamlRoot = XamlRoot
         };
 
-        var result = await dialog.ShowAsync();
+        var result = await ContentDialogTheme.ShowAsync(dialog);
         if (result != ContentDialogResult.Primary || string.IsNullOrWhiteSpace(urlBox.Text))
         {
             return;
@@ -234,7 +234,7 @@ public sealed partial class CatalogPage : Page
             XamlRoot = XamlRoot
         };
 
-        var result = await dialog.ShowAsync();
+        var result = await ContentDialogTheme.ShowAsync(dialog);
         if (result == ContentDialogResult.Primary && !string.IsNullOrWhiteSpace(nameBox.Text))
         {
             await ViewModel.CreateCollectionCommand.ExecuteAsync(nameBox.Text.Trim());
@@ -258,7 +258,7 @@ public sealed partial class CatalogPage : Page
             XamlRoot = XamlRoot
         };
 
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        if (await ContentDialogTheme.ShowAsync(dialog) == ContentDialogResult.Primary)
         {
             await ViewModel.DeleteSelectedCollectionCommand.ExecuteAsync(null);
         }
@@ -275,7 +275,7 @@ public sealed partial class CatalogPage : Page
                 CloseButtonText = "OK",
                 XamlRoot = XamlRoot
             };
-            await tip.ShowAsync();
+            await ContentDialogTheme.ShowAsync(tip);
             return;
         }
 
@@ -289,7 +289,7 @@ public sealed partial class CatalogPage : Page
             XamlRoot = XamlRoot
         };
 
-        if (await confirm.ShowAsync() != ContentDialogResult.Primary)
+        if (await ContentDialogTheme.ShowAsync(confirm) != ContentDialogResult.Primary)
         {
             return;
         }
@@ -314,7 +314,7 @@ public sealed partial class CatalogPage : Page
             }
         });
 
-        var showTask = progressDialog.ShowAsync().AsTask();
+        var showTask = ContentDialogTheme.ShowAsync(progressDialog);
         (int songsChanged, int chorusesInserted) result;
         try
         {
@@ -338,7 +338,7 @@ public sealed partial class CatalogPage : Page
             CloseButtonText = "OK",
             XamlRoot = XamlRoot
         };
-        await done.ShowAsync();
+        await ContentDialogTheme.ShowAsync(done);
     }
 
     private async void OnEditSongClicked(object sender, RoutedEventArgs e)
@@ -393,6 +393,7 @@ public sealed partial class CatalogPage : Page
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Stretch
         };
+        AppUiThemeApplier.ApplyToElement(host);
 
         _editorDialog = new ContentDialog
         {
@@ -402,8 +403,7 @@ public sealed partial class CatalogPage : Page
             CloseButtonText = "Закрыть",
             DefaultButton = ContentDialogButton.Primary,
             FullSizeDesired = true,
-            XamlRoot = XamlRoot,
-            RequestedTheme = AppUiThemeApplier.GetCurrentElementTheme()
+            XamlRoot = XamlRoot
         };
 
         // WinUI по умолчанию режет диалог ~548px — без этого FullSizeDesired почти не помогает
@@ -415,7 +415,7 @@ public sealed partial class CatalogPage : Page
 
         try
         {
-            await _editorDialog.ShowAsync();
+            await ContentDialogTheme.ShowAsync(_editorDialog);
         }
         finally
         {
@@ -513,7 +513,7 @@ public sealed partial class CatalogPage : Page
             XamlRoot = XamlRoot
         };
 
-        var result = await dialog.ShowAsync();
+        var result = await ContentDialogTheme.ShowAsync(dialog);
         if (result == ContentDialogResult.Primary)
         {
             await ViewModel.DeleteSongCommand.ExecuteAsync(null);

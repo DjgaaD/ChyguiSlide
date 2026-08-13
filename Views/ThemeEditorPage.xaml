@@ -264,7 +264,7 @@
                                                     Background="#99000000"
                                                     CornerRadius="4"
                                                     Visibility="{Binding ShowVideoBadge, Converter={StaticResource BoolToVisibilityConverter}}">
-                                                    <TextBlock FontSize="10" Foreground="White" Text="Видео" />
+                                                    <TextBlock FontSize="10" Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}" Text="Видео" />
                                                 </Border>
                                                 <Border
                                                     Width="26"
@@ -279,7 +279,7 @@
                                                         HorizontalAlignment="Center"
                                                         VerticalAlignment="Center"
                                                         FontSize="12"
-                                                        Foreground="White"
+                                                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
                                                         Glyph="&#xE73E;" />
                                                 </Border>
                                             </Grid>

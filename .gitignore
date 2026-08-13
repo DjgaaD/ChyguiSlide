@@ -3,6 +3,7 @@ bin/
 obj/
 .vs/
 artifacts/
+Generated Files/
 *.user
 *.binlog
 *.log

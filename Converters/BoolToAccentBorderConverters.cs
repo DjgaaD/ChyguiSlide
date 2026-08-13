@@ -1,3 +1,4 @@
+using ChyguiSlide.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Media;
@@ -11,12 +12,12 @@ public sealed class BoolToAccentBorderBrushConverter : IValueConverter
         var selected = value is true;
         if (selected)
         {
-            return Application.Current.Resources["AccentFillColorDefaultBrush"] as Brush
-                   ?? Application.Current.Resources["AccentFillColorPrimaryBrush"] as Brush
+            return ThemeBrushHelper.Get("AccentFillColorDefaultBrush")
+                   ?? ThemeBrushHelper.Get("AccentFillColorPrimaryBrush")
                    ?? new SolidColorBrush(Microsoft.UI.Colors.DodgerBlue);
         }
 
-        return Application.Current.Resources["CardStrokeColorDefaultBrush"] as Brush
+        return ThemeBrushHelper.Get("CardStrokeColorDefaultBrush")
                ?? new SolidColorBrush(Microsoft.UI.Colors.Gray);
     }
 
@@ -42,13 +43,13 @@ public sealed class BoolToAccentCardBackgroundConverter : IValueConverter
     {
         if (value is true)
         {
-            return Application.Current.Resources["AccentFillColorTertiaryBrush"] as Brush
-                   ?? Application.Current.Resources["SubtleFillColorSecondaryBrush"] as Brush
+            return ThemeBrushHelper.Get("AccentFillColorTertiaryBrush")
+                   ?? ThemeBrushHelper.Get("SubtleFillColorSecondaryBrush")
                    ?? new SolidColorBrush(Microsoft.UI.Colors.Transparent);
         }
 
-        return Application.Current.Resources["CardBackgroundFillColorDefaultBrush"] as Brush
-               ?? Application.Current.Resources["LayerFillColorDefaultBrush"] as Brush
+        return ThemeBrushHelper.Get("CardBackgroundFillColorDefaultBrush")
+               ?? ThemeBrushHelper.Get("LayerFillColorDefaultBrush")
                ?? new SolidColorBrush(Microsoft.UI.Colors.Transparent);
     }
 
@@ -63,13 +64,13 @@ public sealed class BoolToAccentTitleBrushConverter : IValueConverter
     {
         if (value is true)
         {
-            return Application.Current.Resources["AccentTextFillColorPrimaryBrush"] as Brush
-                   ?? Application.Current.Resources["AccentFillColorDefaultBrush"] as Brush
+            return ThemeBrushHelper.Get("AccentTextFillColorPrimaryBrush")
+                   ?? ThemeBrushHelper.Get("AccentFillColorDefaultBrush")
                    ?? new SolidColorBrush(Microsoft.UI.Colors.DodgerBlue);
         }
 
-        return Application.Current.Resources["TextFillColorPrimaryBrush"] as Brush
-               ?? new SolidColorBrush(Microsoft.UI.Colors.Black);
+        return ThemeBrushHelper.Get("TextFillColorPrimaryBrush")
+               ?? new SolidColorBrush(Microsoft.UI.Colors.Gray);
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, string language) =>

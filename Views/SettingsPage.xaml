@@ -320,6 +320,34 @@
                             </StackPanel>
                         </Border>
 
+                        <Border
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="12"
+                            Padding="20">
+                            <StackPanel Spacing="12">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Выбор в Библии" />
+                                    <TextBlock
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        TextWrapping="Wrap"
+                                        Text="Как выбирать книгу, главу и стих на странице «Библия»." />
+                                </StackPanel>
+                                <ComboBox
+                                    Header="Вид"
+                                    HorizontalAlignment="Stretch"
+                                    MaxWidth="360"
+                                    ItemsSource="{Binding BiblePickerLayoutOptions}"
+                                    SelectedItem="{Binding SelectedBiblePickerLayout, Mode=TwoWay}"
+                                    DisplayMemberPath="Title" />
+                                <TextBlock
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    TextWrapping="Wrap"
+                                    Text="{Binding SelectedBiblePickerLayout.Description}" />
+                            </StackPanel>
+                        </Border>
+
                         <Grid>
                             <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Стили оформления" VerticalAlignment="Center" />
                             <Button
@@ -394,7 +422,7 @@
                                                         HorizontalAlignment="Center"
                                                         VerticalAlignment="Center"
                                                         FontSize="12"
-                                                        Foreground="White"
+                                                        Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
                                                         Glyph="&#xE73E;" />
                                                 </Border>
                                             </Grid>

@@ -4,6 +4,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
+using ChyguiSlide.Services;
+
 namespace ChyguiSlide.Views.Dialogs;
 
 public static class AppUpdateDialog
@@ -54,7 +56,7 @@ public static class AppUpdateDialog
                     XamlRoot = xamlRoot,
                     DefaultButton = ContentDialogButton.Close
                 };
-                await ok.ShowAsync();
+                await ContentDialogTheme.ShowAsync(ok);
                 return;
             }
 
@@ -102,7 +104,7 @@ public static class AppUpdateDialog
             XamlRoot = xamlRoot
         };
 
-        if (await prompt.ShowAsync() != ContentDialogResult.Primary)
+        if (await ContentDialogTheme.ShowAsync(prompt) != ContentDialogResult.Primary)
         {
             return;
         }
@@ -136,7 +138,7 @@ public static class AppUpdateDialog
             progressText.Text = $"Скачивание… {(int)(p * 100)}%";
         });
 
-        var showTask = progressDialog.ShowAsync().AsTask();
+        var showTask = ContentDialogTheme.ShowAsync(progressDialog);
         string installerPath;
         try
         {

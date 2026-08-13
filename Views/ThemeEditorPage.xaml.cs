@@ -8,6 +8,8 @@ using Microsoft.UI.Xaml.Input;
 using Windows.System;
 using Windows.UI.Core;
 
+using ChyguiSlide.Services;
+
 namespace ChyguiSlide.Views;
 
 public sealed partial class ThemeEditorPage : Page
@@ -19,6 +21,7 @@ public sealed partial class ThemeEditorPage : Page
         InitializeComponent();
         ViewModel = App.AppHost.Services.GetRequiredService<ThemePresetEditorViewModel>();
         DataContext = ViewModel;
+        Loaded += (_, _) => AppUiThemeApplier.ApplyToElement(this);
     }
 
     private async void OnPickPrimaryColorClicked(object sender, RoutedEventArgs e)
@@ -126,7 +129,7 @@ public sealed partial class ThemeEditorPage : Page
             XamlRoot = XamlRoot
         };
 
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        if (await ContentDialogTheme.ShowAsync(dialog) == ContentDialogResult.Primary)
         {
             apply(picker.Color);
         }

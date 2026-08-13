@@ -7,6 +7,8 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml;
 
+using ChyguiSlide.Services;
+
 namespace ChyguiSlide.Views;
 
 public sealed partial class LiveControlPage : Page
@@ -104,7 +106,7 @@ public sealed partial class LiveControlPage : Page
             DefaultButton = ContentDialogButton.Secondary
         };
 
-        var result = await dialog.ShowAsync();
+        var result = await ContentDialogTheme.ShowAsync(dialog);
         if (result == ContentDialogResult.Primary)
         {
             ViewModel.LoadSavedPlaylistCommand.Execute(playlist);
@@ -128,7 +130,7 @@ public sealed partial class LiveControlPage : Page
             XamlRoot = XamlRoot
         };
 
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        if (await ContentDialogTheme.ShowAsync(dialog) == ContentDialogResult.Primary)
         {
             await ViewModel.DeleteSavedPlaylistCommand.ExecuteAsync(playlist);
         }
@@ -151,7 +153,7 @@ public sealed partial class LiveControlPage : Page
             XamlRoot = XamlRoot
         };
 
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        if (await ContentDialogTheme.ShowAsync(dialog) == ContentDialogResult.Primary)
         {
             ViewModel.ClearQuickPlaylistCommand.Execute(null);
         }
@@ -183,7 +185,7 @@ public sealed partial class LiveControlPage : Page
 
         textBox.Loaded += (s, args) => textBox.Focus(FocusState.Programmatic);
 
-        var result = await dialog.ShowAsync();
+        var result = await ContentDialogTheme.ShowAsync(dialog);
         if (result == ContentDialogResult.Primary)
         {
             var playlistName = textBox.Text?.Trim();

@@ -5,6 +5,8 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Windows.ApplicationModel.DataTransfer;
 
+using ChyguiSlide.Services;
+
 namespace ChyguiSlide.Views.Dialogs;
 
 /// <summary>
@@ -98,7 +100,7 @@ public static class ErrorDialog
             XamlRoot = xamlRoot
         };
 
-        await dialog.ShowAsync();
+        await ContentDialogTheme.ShowAsync(dialog);
     }
 
     private static XamlRoot? TryGetXamlRoot()

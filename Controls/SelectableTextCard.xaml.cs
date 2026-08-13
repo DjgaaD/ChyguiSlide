@@ -1,7 +1,7 @@
+using ChyguiSlide.Services;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 
 namespace ChyguiSlide.Controls;
 
@@ -41,7 +41,6 @@ public sealed partial class SelectableTextCard : UserControl
     public SelectableTextCard()
     {
         InitializeComponent();
-        ActualThemeChanged += (_, _) => Apply();
         Loaded += (_, _) => Apply();
     }
 
@@ -96,16 +95,15 @@ public sealed partial class SelectableTextCard : UserControl
         if (IsHighlighted)
         {
             TitleText.FontWeight = FontWeights.SemiBold;
-            TitleText.Foreground = ResolveBrush("AccentTextFillColorPrimaryBrush")
-                                   ?? ResolveBrush("AccentFillColorDefaultBrush");
+            TitleText.Foreground = ThemeBrushHelper.Get("AccentTextFillColorPrimaryBrush", this)
+                                   ?? ThemeBrushHelper.Get("AccentFillColorDefaultBrush", this);
         }
         else
         {
             TitleText.FontWeight = FontWeights.Normal;
-            TitleText.Foreground = ResolveBrush("TextFillColorPrimaryBrush");
+            TitleText.ClearValue(TextBlock.ForegroundProperty);
         }
-    }
 
-    private static Brush? ResolveBrush(string key) =>
-        Application.Current.Resources[key] as Brush;
+        BodyText.ClearValue(TextBlock.ForegroundProperty);
+    }
 }

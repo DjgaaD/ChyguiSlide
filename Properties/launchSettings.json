@@ -1,9 +1,9 @@
 {
   "profiles": {
-    "ChyguiSlide (Package)": {
+    "Чугуй Слайды (Package)": {
       "commandName": "MsixPackage"
     },
-    "ChyguiSlide (Unpackaged)": {
+    "Чугуй Слайды (Unpackaged)": {
       "commandName": "Project"
     }
   }

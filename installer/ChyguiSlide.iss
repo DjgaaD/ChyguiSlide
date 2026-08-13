@@ -8,10 +8,10 @@
   #define MyAppVersionLabel "0.0.1-beta"
 #endif
 #ifndef MyAppDisplayName
-  #define MyAppDisplayName "ChyguiSlide (beta)"
+  #define MyAppDisplayName "Чугуй Слайды (beta)"
 #endif
 
-#define MyAppPublisher "ChyguiSlide"
+#define MyAppPublisher "Чугуй Слайды"
 #define MyAppExeName "ChyguiSlide.exe"
 ; Stable across versions — required for upgrades / Add/Remove Programs
 ; Double brace → single brace in AppId
@@ -25,10 +25,13 @@ AppVersion={#MyAppVersion}
 AppVerName={#MyAppDisplayName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf64}\ChyguiSlide
-DefaultGroupName=ChyguiSlide
+DefaultGroupName=Чугуй Слайды
 DisableProgramGroupPage=yes
 OutputDir=..\artifacts\release
 OutputBaseFilename=ChyguiSlide-{#MyAppVersionLabel}-Setup
+#ifexist "..\Assets\AppIcon.ico"
+SetupIconFile=..\Assets\AppIcon.ico
+#endif
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppDisplayName}
 Compression=lzma2/max

@@ -1,3 +1,4 @@
+using ChyguiSlide.Services;
 using ChyguiSlide.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
@@ -14,8 +15,11 @@ public sealed partial class EditorPage : Page
         InitializeComponent();
         ViewModel = App.AppHost.Services.GetRequiredService<SongEditorViewModel>();
         DataContext = ViewModel;
-        // Не вызываем InitializeAsync/LoadSongs на Loaded:
-        // OpenEditorDialogAsync уже готовит VM (новая / выбранная / импорт).
-        // Поздний LoadSongs раньше подставлял Songs.First() поверх CreateNewSong.
+        Loaded += OnLoaded;
+    }
+
+    private void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        AppUiThemeApplier.ApplyToElement(this);
     }
 }

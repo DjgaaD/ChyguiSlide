@@ -13,7 +13,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.UI;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml.Navigation;
 using WinRT.Interop;
 
@@ -91,7 +93,7 @@ namespace ChyguiSlide
 
                 LogToFile("Создание главного окна...");
                 window ??= new Window();
-                window.Title = "ChyguiSlide";
+                window.Title = AppVersionInfo.ProductName;
                 MainWindow = window;
                 MainWindowHandle = WindowNative.GetWindowHandle(window);
                 window.Closed += OnMainWindowClosed;
@@ -126,6 +128,7 @@ namespace ChyguiSlide
 
                 LogToFile("Активация окна...");
                 window.Activate();
+                AppWindowIconHelper.TryApply(window, LogToFile);
                 LogToFile("Окно активировано");
 
                 try
@@ -897,6 +900,7 @@ namespace ChyguiSlide
                     services.AddSingleton<DashboardViewModel>();
                     services.AddSingleton<LiveControlViewModel>();
                     services.AddSingleton<ThemePresetEditorViewModel>();
+                    services.AddSingleton<AnnouncementEditorViewModel>();
                     services.AddSingleton<SongEditorViewModel>();
                     services.AddSingleton<ProjectionDisplayViewModel>();
                     services.AddSingleton<IYandexDiskService, YandexDiskService>();

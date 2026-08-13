@@ -201,9 +201,13 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
     public ObservableCollection<WallpaperPoolOptionItem> WallpaperPoolOptions { get; } = new();
     public ObservableCollection<ThemeWallpaperItem> EditingPoolWallpapers { get; } = new();
     public ObservableCollection<AppUiThemeOptionItem> AppUiThemeOptions { get; } = new();
+    public ObservableCollection<BiblePickerLayoutOptionItem> BiblePickerLayoutOptions { get; } = new();
 
     [ObservableProperty]
     private AppUiThemeOptionItem? selectedAppUiTheme;
+
+    [ObservableProperty]
+    private BiblePickerLayoutOptionItem? selectedBiblePickerLayout;
 
     private Guid? _selectedSharedWallpaperId;
     private Guid? _selectedSongWallpaperId;
@@ -296,6 +300,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         BuildBackgroundPickModeOptions();
         BuildWallpaperPoolOptions();
         BuildAppUiThemeOptions();
+        BuildBiblePickerLayoutOptions();
         SelectedSettingsSection = SettingsSections[0];
 
         PropertyChanged += (_, args) =>
@@ -462,6 +467,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         }
 
         await LoadAppUiThemeAsync(cancellationToken);
+        await LoadBiblePickerLayoutAsync(cancellationToken);
         await LoadKeepProjectionBackgroundAsync();
 
         if (Presets.Count > 0)
@@ -762,6 +768,66 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"SaveAppUiThemeAsync: {ex.Message}");
+        }
+    }
+
+    private void BuildBiblePickerLayoutOptions()
+    {
+        BiblePickerLayoutOptions.Clear();
+        BiblePickerLayoutOptions.Add(new BiblePickerLayoutOptionItem(
+            BiblePickerLayoutMode.Lists,
+            "Списки",
+            "Книги, главы и стихи в колонках — как раньше."));
+        BiblePickerLayoutOptions.Add(new BiblePickerLayoutOptionItem(
+            BiblePickerLayoutMode.Grid,
+            "Плитки",
+            "Цветная сетка книг, глав и номеров стихов."));
+
+        _suppressBiblePickerLayoutPersist = true;
+        SelectedBiblePickerLayout = BiblePickerLayoutOptions.FirstOrDefault();
+        _suppressBiblePickerLayoutPersist = false;
+    }
+
+    private bool _suppressBiblePickerLayoutPersist;
+
+    private async Task LoadBiblePickerLayoutAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _suppressBiblePickerLayoutPersist = true;
+            var mode = await _displaySettingsService.GetBiblePickerLayoutAsync();
+            SelectedBiblePickerLayout = BiblePickerLayoutOptions.FirstOrDefault(o => o.Mode == mode)
+                ?? BiblePickerLayoutOptions.FirstOrDefault();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"LoadBiblePickerLayoutAsync: {ex.Message}");
+        }
+        finally
+        {
+            _suppressBiblePickerLayoutPersist = false;
+        }
+    }
+
+    partial void OnSelectedBiblePickerLayoutChanged(BiblePickerLayoutOptionItem? value)
+    {
+        if (_suppressBiblePickerLayoutPersist || value is null)
+        {
+            return;
+        }
+
+        _ = SaveBiblePickerLayoutAsync(value.Mode);
+    }
+
+    private async Task SaveBiblePickerLayoutAsync(BiblePickerLayoutMode mode)
+    {
+        try
+        {
+            await _displaySettingsService.SetBiblePickerLayoutAsync(mode);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"SaveBiblePickerLayoutAsync: {ex.Message}");
         }
     }
 
@@ -1939,7 +2005,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
                 DefaultButton = ContentDialogButton.Secondary
             };
 
-            var result = await dialog.ShowAsync();
+            var result = await ContentDialogTheme.ShowAsync(dialog);
             if (result != ContentDialogResult.Primary)
             {
                 return;

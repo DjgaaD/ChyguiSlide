@@ -20,6 +20,7 @@
                 x:Name="TitleText"
                 Grid.Column="0"
                 FontSize="14"
+                Foreground="{ThemeResource TextFillColorPrimaryBrush}"
                 TextTrimming="CharacterEllipsis"
                 VerticalAlignment="Center" />
             <Border
@@ -47,6 +48,7 @@
         </Grid>
         <TextBlock
             x:Name="BodyText"
+            Foreground="{ThemeResource TextFillColorPrimaryBrush}"
             TextWrapping="WrapWholeWords" />
     </StackPanel>
 </UserControl>
