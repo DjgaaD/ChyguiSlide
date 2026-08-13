@@ -494,6 +494,20 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
             }
         }
 
+        // Отмечаем выбранную песню как проигранную при открытии трансляции
+        try
+        {
+            if (SelectedQuickEntry?.SongId != Guid.Empty)
+            {
+                SelectedQuickEntry.WasPlayed = true;
+                _ = RecordPlaySafeAsync(SelectedQuickEntry.SongId);
+            }
+        }
+        catch
+        {
+            // Игнорируем ошибки при записи статистики
+        }
+
         // NDI не блокирует открытие окна
         _ = RefreshNdiSourcesAsync();
     }
@@ -644,6 +658,13 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
                 if (!_projectionDisplayService.IsOpen)
                 {
                     await OpenProjectionAsync();
+                }
+
+                // Отмечаем песню как проигранную при запуске через горячую клавишу
+                if (entryForShow.SongId != Guid.Empty)
+                {
+                    entryForShow.WasPlayed = true;
+                    _ = RecordPlaySafeAsync(entryForShow.SongId);
                 }
 
                 return;
@@ -1067,6 +1088,13 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
             await OpenProjectionAsync();
         }
 
+        // Отмечаем песню как проигранную только при запуске в трансляцию
+        if (entry.SongId != Guid.Empty)
+        {
+            entry.WasPlayed = true;
+            _ = RecordPlaySafeAsync(entry.SongId);
+        }
+
         // Всегда выделяем запущенную песню в быстром плейлисте
         _suppressQuickEntryShow = true;
         SelectedQuickEntry = entry;
@@ -1263,13 +1291,6 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
             : $"Песня «{entry.Song.Title}» выбрана. Секций нет.";
         NotifySectionProgressChanged();
         NotifySongProgressChanged();
-
-        // Статистика показов (только для песен из каталога)
-        if (entry.SongId != Guid.Empty)
-        {
-            entry.WasPlayed = true;
-            _ = RecordPlaySafeAsync(entry.SongId);
-        }
     }
 
     public void SyncQuickPlaylistOrderFromUi()

@@ -1,17 +1,27 @@
-; ChyguiSlide — Inno Setup 6 script (per-machine / Program Files)
-; Compile via scripts\Build-Installer.ps1 (defines MyAppVersion / MyAppVersionLabel / MyAppDisplayName).
+﻿; ChyguiSlide — Inno Setup 6 script (per-machine / Program Files)
+; Compile via scripts\Build-Installer.ps1
+; Encoding: UTF-8 with BOM (required for Cyrillic AppName / shortcuts)
+
+#ifexist "GeneratedDefines.iss"
+  #include "GeneratedDefines.iss"
+#endif
 
 #ifndef MyAppVersion
-  #define MyAppVersion "0.0.1"
+  #define MyAppVersion "0.0.4"
 #endif
 #ifndef MyAppVersionLabel
-  #define MyAppVersionLabel "0.0.1-beta"
+  #define MyAppVersionLabel "0.0.4-beta"
 #endif
 #ifndef MyAppDisplayName
   #define MyAppDisplayName "Чугуй Слайды (beta)"
 #endif
+#ifndef MyAppPublisher
+  #define MyAppPublisher "Чугуй Слайды"
+#endif
+#ifndef MyAppGroupName
+  #define MyAppGroupName "Чугуй Слайды"
+#endif
 
-#define MyAppPublisher "Чугуй Слайды"
 #define MyAppExeName "ChyguiSlide.exe"
 ; Stable across versions — required for upgrades / Add/Remove Programs
 ; Double brace → single brace in AppId
@@ -25,7 +35,7 @@ AppVersion={#MyAppVersion}
 AppVerName={#MyAppDisplayName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf64}\ChyguiSlide
-DefaultGroupName=Чугуй Слайды
+DefaultGroupName={#MyAppGroupName}
 DisableProgramGroupPage=yes
 OutputDir=..\artifacts\release
 OutputBaseFilename=ChyguiSlide-{#MyAppVersionLabel}-Setup

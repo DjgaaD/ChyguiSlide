@@ -40,21 +40,8 @@
     </Page.Resources>
 
     <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-
-        <StackPanel Grid.Row="0" Padding="24,20,24,8" Spacing="4">
-            <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="Настройки" />
-            <TextBlock
-                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                Text="Параметры трансляции, камеры, оформления, горячих клавиш, резервных копий и сведения о проекте." />
-        </StackPanel>
-
         <NavigationView
             x:Name="SettingsNav"
-            Grid.Row="1"
             PaneDisplayMode="Left"
             IsBackButtonVisible="Collapsed"
             IsSettingsVisible="False"
@@ -298,56 +285,121 @@
                         </Border>
                     </StackPanel>
 
+                    <!-- Интерфейс -->
+                    <Border
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="12"
+                        Padding="20"
+                        Visibility="{Binding IsInterfaceSectionVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel Spacing="14">
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="140" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock
+                                    Text="Тема"
+                                    VerticalAlignment="Center"
+                                    Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                <Border Grid.Column="1" Style="{StaticResource SegmentedTrackStyle}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <RadioButton
+                                            Grid.Column="0"
+                                            GroupName="AppUiTheme"
+                                            Content="Система"
+                                            Style="{StaticResource SegmentedRadioStyle}"
+                                            IsChecked="{Binding IsAppUiThemeSystem, Mode=TwoWay}" />
+                                        <RadioButton
+                                            Grid.Column="1"
+                                            GroupName="AppUiTheme"
+                                            Content="Светлая"
+                                            Style="{StaticResource SegmentedRadioStyle}"
+                                            IsChecked="{Binding IsAppUiThemeLight, Mode=TwoWay}" />
+                                        <RadioButton
+                                            Grid.Column="2"
+                                            GroupName="AppUiTheme"
+                                            Content="Тёмная"
+                                            Style="{StaticResource SegmentedRadioStyle}"
+                                            IsChecked="{Binding IsAppUiThemeDark, Mode=TwoWay}" />
+                                    </Grid>
+                                </Border>
+                            </Grid>
+
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="140" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock
+                                    Text="Меню"
+                                    VerticalAlignment="Center"
+                                    Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                <Border Grid.Column="1" Style="{StaticResource SegmentedTrackStyle}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <RadioButton
+                                            Grid.Column="0"
+                                            GroupName="NavigationPane"
+                                            Content="Свёрнуто"
+                                            Style="{StaticResource SegmentedRadioStyle}"
+                                            IsChecked="{Binding IsNavigationPaneCollapsed, Mode=TwoWay}" />
+                                        <RadioButton
+                                            Grid.Column="1"
+                                            GroupName="NavigationPane"
+                                            Content="Развёрнуто"
+                                            Style="{StaticResource SegmentedRadioStyle}"
+                                            IsChecked="{Binding IsNavigationPaneExpanded, Mode=TwoWay}" />
+                                    </Grid>
+                                </Border>
+                            </Grid>
+
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="140" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock
+                                    Text="Библия"
+                                    VerticalAlignment="Center"
+                                    Style="{StaticResource BodyStrongTextBlockStyle}" />
+                                <Border Grid.Column="1" Style="{StaticResource SegmentedTrackStyle}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <RadioButton
+                                            Grid.Column="0"
+                                            GroupName="BiblePicker"
+                                            Content="Списки"
+                                            Style="{StaticResource SegmentedRadioStyle}"
+                                            IsChecked="{Binding IsBiblePickerLists, Mode=TwoWay}" />
+                                        <RadioButton
+                                            Grid.Column="1"
+                                            GroupName="BiblePicker"
+                                            Content="Таблица"
+                                            Style="{StaticResource SegmentedRadioStyle}"
+                                            IsChecked="{Binding IsBiblePickerGrid, Mode=TwoWay}" />
+                                    </Grid>
+                                </Border>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
                     <!-- Стили -->
                     <StackPanel
                         Spacing="16"
                         Visibility="{Binding IsThemesSectionVisible, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <Border
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="1"
-                            CornerRadius="12"
-                            Padding="20">
-                            <StackPanel Spacing="12">
-                                <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Тема интерфейса" />
-                                <ComboBox
-                                    Header="Тема"
-                                    HorizontalAlignment="Stretch"
-                                    MaxWidth="360"
-                                    ItemsSource="{Binding AppUiThemeOptions}"
-                                    SelectedItem="{Binding SelectedAppUiTheme, Mode=TwoWay}"
-                                    DisplayMemberPath="Title" />
-                            </StackPanel>
-                        </Border>
-
-                        <Border
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="1"
-                            CornerRadius="12"
-                            Padding="20">
-                            <StackPanel Spacing="12">
-                                <StackPanel Spacing="4">
-                                    <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Выбор в Библии" />
-                                    <TextBlock
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        TextWrapping="Wrap"
-                                        Text="Как выбирать книгу, главу и стих на странице «Библия»." />
-                                </StackPanel>
-                                <ComboBox
-                                    Header="Вид"
-                                    HorizontalAlignment="Stretch"
-                                    MaxWidth="360"
-                                    ItemsSource="{Binding BiblePickerLayoutOptions}"
-                                    SelectedItem="{Binding SelectedBiblePickerLayout, Mode=TwoWay}"
-                                    DisplayMemberPath="Title" />
-                                <TextBlock
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    TextWrapping="Wrap"
-                                    Text="{Binding SelectedBiblePickerLayout.Description}" />
-                            </StackPanel>
-                        </Border>
-
                         <Grid>
                             <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Стили оформления" VerticalAlignment="Center" />
                             <Button

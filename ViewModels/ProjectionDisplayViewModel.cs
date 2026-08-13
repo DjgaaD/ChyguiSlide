@@ -304,6 +304,7 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
         // Загружаем настройку раскладки текста и разрешение экрана
         _ = LoadTextLayoutModeAsync();
         _ = LoadDisplayResolutionAsync();
+        _ = RefreshBibleReferenceSettingsAsync();
     }
 
     private async Task LoadTextLayoutModeAsync()
@@ -779,7 +780,7 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
     partial void OnOutgoingReferenceCaptionChanged(string? value) =>
         NotifyOutgoingReferenceVisibility();
 
-    private async Task RefreshBibleReferenceSettingsAsync()
+    public async Task RefreshBibleReferenceSettingsAsync()
     {
         try
         {
@@ -787,6 +788,7 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
             BibleReferencePlacement = await _displaySettingsService.GetBibleReferencePlacementAsync();
             BibleReferenceAlignment = await _displaySettingsService.GetBibleReferenceAlignmentAsync();
             NotifyReferenceVisibility();
+            RelayoutCurrentSlideForReference();
         }
         catch (Exception ex)
         {

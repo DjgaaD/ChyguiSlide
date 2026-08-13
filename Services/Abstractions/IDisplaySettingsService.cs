@@ -37,5 +37,7 @@ public interface IDisplaySettingsService
     Task SetAppUiThemeAsync(AppUiThemeMode mode);
     Task<BiblePickerLayoutMode> GetBiblePickerLayoutAsync();
     Task SetBiblePickerLayoutAsync(BiblePickerLayoutMode mode);
+    Task<NavigationPaneMode> GetNavigationPaneModeAsync();
+    Task SetNavigationPaneModeAsync(NavigationPaneMode mode);
 }
 

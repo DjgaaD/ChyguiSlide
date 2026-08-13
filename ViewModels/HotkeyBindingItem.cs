@@ -70,6 +70,7 @@ public enum SettingsSection
 {
     Projection,
     Camera,
+    Interface,
     Themes,
     Hotkeys,
     Backup,

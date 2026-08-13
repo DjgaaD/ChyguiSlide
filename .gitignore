@@ -4,6 +4,7 @@ obj/
 .vs/
 artifacts/
 Generated Files/
+installer/GeneratedDefines.iss
 *.user
 *.binlog
 *.log

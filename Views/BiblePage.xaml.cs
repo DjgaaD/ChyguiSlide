@@ -1,19 +1,52 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.Specialized;
+using System.Globalization;
+using System.Linq;
+using ChyguiSlide.Services;
+using ChyguiSlide.Services.Models;
 using ChyguiSlide.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.UI;
+using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
+using Windows.UI;
 using System.Threading.Tasks;
 
 namespace ChyguiSlide.Views;
 
 public sealed partial class BiblePage : Page
 {
-    private const double TileGap = 4;
-    private const double BookTileMinSize = 52;
-    private const double NumberTileMinSize = 32;
+    private const int BookColumns = 11;
+    private const int ChapterColumns = 8;
+    private const int VerseColumns = 6;
+
+    private static readonly Brush CellStroke =
+        new SolidColorBrush(Color.FromArgb(0x40, 0x00, 0x00, 0x00));
+
+    private static readonly Brush ChapterFill =
+        new SolidColorBrush(Color.FromArgb(0xFF, 0x8B, 0x6B, 0x3D));
+
+    private static readonly Brush VerseFill =
+        new SolidColorBrush(Color.FromArgb(0xFF, 0xC4, 0xA5, 0x74));
+
+    private static readonly Brush WhiteText = new SolidColorBrush(Colors.White);
+    private static readonly Brush VerseText =
+        new SolidColorBrush(Color.FromArgb(0xFF, 0x1A, 0x12, 0x08));
+    private static readonly Brush SecondaryWhite =
+        new SolidColorBrush(Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF));
+
+    private static readonly Dictionary<string, Brush> BookColorCache = new(StringComparer.OrdinalIgnoreCase);
+
+    private bool _booksDirty;
+    private bool _chaptersDirty;
+    private bool _versesDirty;
+    private bool _rebuildQueued;
+    private Brush? _accentBrush;
 
     public BibleViewModel ViewModel { get; }
 
@@ -24,19 +57,17 @@ public sealed partial class BiblePage : Page
         DataContext = ViewModel;
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         ViewModel.SearchFocusRequested += OnSearchFocusRequested;
-        ViewModel.Books.CollectionChanged += OnPickerItemsChanged;
-        ViewModel.Chapters.CollectionChanged += OnPickerItemsChanged;
-        ViewModel.Verses.CollectionChanged += OnPickerItemsChanged;
-        BookGrid.Loaded += OnPickerGridLoaded;
-        ChapterGrid.Loaded += OnPickerGridLoaded;
-        VerseNumberGrid.Loaded += OnPickerGridLoaded;
+        ViewModel.Books.CollectionChanged += OnBooksChanged;
+        ViewModel.Chapters.CollectionChanged += OnChaptersChanged;
+        ViewModel.Verses.CollectionChanged += OnVersesChanged;
     }
 
     private async void OnPageLoaded(object sender, RoutedEventArgs e)
     {
         await ViewModel.InitializeAsync();
         SyncChapterSelection();
-        UpdatePickerTileSizes();
+        MarkAllTablesDirty();
+        QueueTableRebuild();
         if (string.IsNullOrWhiteSpace(GetActiveSearchBox().Text) && ViewModel.IsSearchMode)
         {
             ViewModel.ApplySearch(null);
@@ -62,116 +93,313 @@ public sealed partial class BiblePage : Page
 
         if (e.PropertyName is nameof(BibleViewModel.PickerLayout))
         {
-            DispatcherQueue.TryEnqueue(UpdatePickerTileSizes);
+            MarkAllTablesDirty();
+            QueueTableRebuild();
+        }
+
+        if (e.PropertyName is nameof(BibleViewModel.SelectedBook)
+            or nameof(BibleViewModel.SelectedChapter)
+            or nameof(BibleViewModel.SelectedVerse))
+        {
+            DispatcherQueue.TryEnqueue(UpdateTableSelectionChrome);
         }
     }
 
-    private void OnPickerItemsChanged(object? sender, NotifyCollectionChangedEventArgs e) =>
-        DispatcherQueue.TryEnqueue(UpdatePickerTileSizes);
-
-    private void OnPickerGridLoaded(object sender, RoutedEventArgs e) => UpdatePickerTileSizes();
-
-    private void OnPickerGridSizeChanged(object sender, SizeChangedEventArgs e) => UpdatePickerTileSizes();
-
-    private bool _isSizingPickerTiles;
-
-    private void UpdatePickerTileSizes()
+    private void OnBooksChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
-        if (_isSizingPickerTiles || !ViewModel.IsGridPickerLayout)
+        _booksDirty = true;
+        QueueTableRebuild();
+    }
+
+    private void OnChaptersChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        _chaptersDirty = true;
+        QueueTableRebuild();
+    }
+
+    private void OnVersesChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        _versesDirty = true;
+        QueueTableRebuild();
+    }
+
+    private void MarkAllTablesDirty()
+    {
+        _booksDirty = true;
+        _chaptersDirty = true;
+        _versesDirty = true;
+    }
+
+    private void QueueTableRebuild()
+    {
+        if (_rebuildQueued || !ViewModel.IsGridPickerLayout)
         {
             return;
         }
 
-        _isSizingPickerTiles = true;
-        try
+        _rebuildQueued = true;
+        DispatcherQueue.TryEnqueue(() =>
         {
-            SizeWrapGrid(BookGrid, BookGridHost, ViewModel.Books.Count, 11, BookTileMinSize, headerHeight: 0);
-            SizeWrapGrid(ChapterGrid, ChapterGridHost, ViewModel.Chapters.Count, 10, NumberTileMinSize, headerHeight: 28);
-            SizeWrapGrid(VerseNumberGrid, VerseGridHost, ViewModel.Verses.Count, 8, NumberTileMinSize, headerHeight: 28);
-        }
-        finally
-        {
-            _isSizingPickerTiles = false;
-        }
+            _rebuildQueued = false;
+            if (!ViewModel.IsGridPickerLayout)
+            {
+                return;
+            }
+
+            _accentBrush ??= ThemeBrushHelper.Get("AccentFillColorDefaultBrush", this)
+                             ?? new SolidColorBrush(Color.FromArgb(0xFF, 0x51, 0x2B, 0xD4));
+
+            if (_booksDirty)
+            {
+                RebuildBookTable();
+                _booksDirty = false;
+            }
+
+            if (_chaptersDirty)
+            {
+                RebuildChapterTable();
+                _chaptersDirty = false;
+            }
+
+            if (_versesDirty)
+            {
+                RebuildVerseTable();
+                _versesDirty = false;
+            }
+        });
     }
 
-    private static void SizeWrapGrid(
-        GridView grid,
-        FrameworkElement host,
+    private void RebuildBookTable()
+    {
+        BuildUniformTable(
+            BookTable,
+            ViewModel.Books.Count,
+            BookColumns,
+            index =>
+            {
+                var book = ViewModel.Books[index];
+                var selected = ReferenceEquals(book, ViewModel.SelectedBook);
+                var cell = CreateBookCell(book, selected);
+                cell.Tag = book;
+                cell.Tapped += OnBookCellTapped;
+                return cell;
+            });
+    }
+
+    private void RebuildChapterTable()
+    {
+        BuildUniformTable(
+            ChapterTable,
+            ViewModel.Chapters.Count,
+            ChapterColumns,
+            index =>
+            {
+                var chapter = ViewModel.Chapters[index];
+                var selected = ViewModel.SelectedChapter == chapter;
+                var cell = CreateNumberCell(
+                    ChapterFill,
+                    WhiteText,
+                    chapter.ToString(CultureInfo.InvariantCulture),
+                    selected);
+                cell.Tag = chapter;
+                cell.Tapped += OnChapterCellTapped;
+                return cell;
+            });
+    }
+
+    private void RebuildVerseTable()
+    {
+        BuildUniformTable(
+            VerseTable,
+            ViewModel.Verses.Count,
+            VerseColumns,
+            index =>
+            {
+                var verse = ViewModel.Verses[index];
+                var selected = ReferenceEquals(verse, ViewModel.SelectedVerse);
+                var cell = CreateNumberCell(
+                    VerseFill,
+                    VerseText,
+                    verse.VerseNumber.ToString(CultureInfo.InvariantCulture),
+                    selected);
+                cell.Tag = verse;
+                cell.Tapped += OnVerseCellTapped;
+                return cell;
+            });
+    }
+
+    private static void BuildUniformTable(
+        Grid table,
         int itemCount,
-        int preferredColumns,
-        double minItemSize,
-        double headerHeight)
+        int columns,
+        Func<int, FrameworkElement> createCell)
     {
-        if (grid.ItemsPanelRoot is not ItemsWrapGrid wrap || host.ActualWidth <= 0 || host.ActualHeight <= 0)
+        table.Children.Clear();
+        table.RowDefinitions.Clear();
+        table.ColumnDefinitions.Clear();
+
+        if (itemCount <= 0)
         {
             return;
         }
 
-        var padding = host is Border border ? border.Padding : new Thickness();
-        var width = Math.Max(1, host.ActualWidth - padding.Left - padding.Right);
-        var height = Math.Max(1, host.ActualHeight - padding.Top - padding.Bottom - headerHeight);
+        columns = Math.Clamp(columns, 1, itemCount);
+        var rows = (int)Math.Ceiling(itemCount / (double)columns);
 
-        var count = Math.Max(1, itemCount);
-        var maxColumns = Math.Clamp(Math.Min(preferredColumns, count), 1, count);
-
-        var bestColumns = 1;
-        var bestSize = minItemSize;
-
-        for (var columns = 1; columns <= maxColumns; columns++)
+        for (var c = 0; c < columns; c++)
         {
-            var rows = (int)Math.Ceiling(count / (double)columns);
-            var sizeByWidth = (width / columns) - TileGap;
-            var sizeByHeight = (height / rows) - TileGap;
-            var size = Math.Min(sizeByWidth, sizeByHeight);
-            if (size < minItemSize)
-            {
-                continue;
-            }
-
-            // Берём самую крупную квадратную плитку; при равенстве — ближе к preferredColumns.
-            if (size > bestSize + 0.5 || (Math.Abs(size - bestSize) <= 0.5 && columns > bestColumns))
-            {
-                bestSize = size;
-                bestColumns = columns;
-            }
+            table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         }
 
-        wrap.Orientation = Orientation.Horizontal;
-        wrap.MaximumRowsOrColumns = bestColumns;
-        wrap.ItemWidth = bestSize;
-        wrap.ItemHeight = bestSize;
+        for (var r = 0; r < rows; r++)
+        {
+            table.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        }
+
+        for (var i = 0; i < itemCount; i++)
+        {
+            var cell = createCell(i);
+            Grid.SetRow(cell, i / columns);
+            Grid.SetColumn(cell, i % columns);
+            table.Children.Add(cell);
+        }
+    }
+
+    private Border CreateBookCell(BibleBook book, bool selected)
+    {
+        var panel = new StackPanel
+        {
+            Spacing = 1,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = book.Abbreviation,
+                    FontSize = 28,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = WhiteText,
+                    HorizontalAlignment = HorizontalAlignment.Center
+                },
+                new TextBlock
+                {
+                    Text = book.RussianName,
+                    FontSize = 12,
+                    Foreground = SecondaryWhite,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    MaxLines = 1
+                }
+            }
+        };
+
+        return new Border
+        {
+            Background = GetBookBrush(book.CategoryColorHex),
+            BorderBrush = selected ? _accentBrush : CellStroke,
+            BorderThickness = new Thickness(2),
+            Child = new Viewbox
+            {
+                Stretch = Stretch.Uniform,
+                Margin = new Thickness(3),
+                Child = panel
+            },
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch
+        };
+    }
+
+    private Border CreateNumberCell(Brush background, Brush foreground, string text, bool selected) =>
+        new()
+        {
+            Background = background,
+            BorderBrush = selected ? _accentBrush : CellStroke,
+            BorderThickness = new Thickness(2),
+            Child = new Viewbox
+            {
+                Stretch = Stretch.Uniform,
+                Margin = new Thickness(4),
+                Child = new TextBlock
+                {
+                    Text = text,
+                    FontSize = 32,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = foreground,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center
+                }
+            },
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch
+        };
+
+    private void UpdateTableSelectionChrome()
+    {
+        if (!ViewModel.IsGridPickerLayout)
+        {
+            return;
+        }
+
+        _accentBrush ??= ThemeBrushHelper.Get("AccentFillColorDefaultBrush", this)
+                         ?? new SolidColorBrush(Color.FromArgb(0xFF, 0x51, 0x2B, 0xD4));
+
+        foreach (var child in BookTable.Children.OfType<Border>())
+        {
+            var selected = child.Tag is BibleBook book && ReferenceEquals(book, ViewModel.SelectedBook);
+            child.BorderBrush = selected ? _accentBrush : CellStroke;
+        }
+
+        foreach (var child in ChapterTable.Children.OfType<Border>())
+        {
+            var selected = child.Tag is int chapter && ViewModel.SelectedChapter == chapter;
+            child.BorderBrush = selected ? _accentBrush : CellStroke;
+        }
+
+        foreach (var child in VerseTable.Children.OfType<Border>())
+        {
+            var selected = child.Tag is BibleVerseItem verse && ReferenceEquals(verse, ViewModel.SelectedVerse);
+            child.BorderBrush = selected ? _accentBrush : CellStroke;
+        }
+    }
+
+    private void OnBookCellTapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (sender is Border { Tag: BibleBook book })
+        {
+            ViewModel.SelectedBook = book;
+        }
+    }
+
+    private void OnChapterCellTapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (sender is Border { Tag: int chapter })
+        {
+            ViewModel.SelectedChapter = chapter;
+        }
+    }
+
+    private void OnVerseCellTapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (sender is Border { Tag: BibleVerseItem verse })
+        {
+            ViewModel.SelectedVerse = verse;
+        }
     }
 
     private void SyncChapterSelection()
     {
-        SyncChapterListSelection(ChapterList);
-        SyncChapterListSelection(ChapterGrid);
-    }
-
-    private void SyncChapterListSelection(ListViewBase list)
-    {
-        if (ViewModel.SelectedChapter is int chapter && list.Items.Contains(chapter))
+        if (ViewModel.SelectedChapter is int chapter && ChapterList.Items.Contains(chapter))
         {
-            list.SelectedItem = chapter;
+            ChapterList.SelectedItem = chapter;
         }
         else if (ViewModel.SelectedChapter is null)
         {
-            list.SelectedItem = null;
+            ChapterList.SelectedItem = null;
         }
     }
 
     private void OnChapterSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (ChapterList.SelectedItem is int chapter)
-        {
-            ViewModel.SelectedChapter = chapter;
-        }
-    }
-
-    private void OnChapterGridSelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (ChapterGrid.SelectedItem is int chapter)
         {
             ViewModel.SelectedChapter = chapter;
         }
@@ -185,6 +413,8 @@ public sealed partial class BiblePage : Page
             sender.Text = string.Empty;
             SyncSearchBoxes(sender);
             SyncChapterSelection();
+            MarkAllTablesDirty();
+            QueueTableRebuild();
         }
     }
 
@@ -201,6 +431,8 @@ public sealed partial class BiblePage : Page
         if (!ViewModel.IsSearchMode)
         {
             SyncChapterSelection();
+            MarkAllTablesDirty();
+            QueueTableRebuild();
         }
     }
 
@@ -222,6 +454,8 @@ public sealed partial class BiblePage : Page
         {
             ViewModel.NavigateToSearchResult(item);
             SyncChapterSelection();
+            MarkAllTablesDirty();
+            QueueTableRebuild();
         }
     }
 
@@ -239,5 +473,33 @@ public sealed partial class BiblePage : Page
     private async void OnSearchFocusRequested()
     {
         await FocusSearchBoxIfRequestedAsync();
+    }
+
+    private static Brush GetBookBrush(string hex)
+    {
+        if (BookColorCache.TryGetValue(hex, out var cached))
+        {
+            return cached;
+        }
+
+        var cleaned = (hex ?? string.Empty).Trim();
+        if (cleaned.StartsWith('#'))
+        {
+            cleaned = cleaned[1..];
+        }
+
+        Brush brush = ChapterFill;
+        if (cleaned.Length == 6
+            && uint.TryParse(cleaned, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var rgb))
+        {
+            brush = new SolidColorBrush(Color.FromArgb(
+                0xFF,
+                (byte)((rgb >> 16) & 0xFF),
+                (byte)((rgb >> 8) & 0xFF),
+                (byte)(rgb & 0xFF)));
+        }
+
+        BookColorCache[hex] = brush;
+        return brush;
     }
 }

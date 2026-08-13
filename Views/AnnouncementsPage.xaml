@@ -33,8 +33,6 @@
             CornerRadius="12"
             Padding="16">
             <StackPanel Spacing="12">
-                <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="Объявления" />
-
                 <AutoSuggestBox
                     x:Name="SearchBox"
                     VerticalAlignment="Center"

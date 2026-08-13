@@ -1278,6 +1278,21 @@ public sealed class DisplaySettingsService : IDisplaySettingsService
         await WriteSettingAsync(BiblePickerLayoutKey, mode.ToString()).ConfigureAwait(false);
     }
 
+    private const string NavigationPaneModeKey = "NavigationPaneMode";
+
+    public async Task<NavigationPaneMode> GetNavigationPaneModeAsync()
+    {
+        var raw = await ReadSettingAsync(NavigationPaneModeKey).ConfigureAwait(false);
+        return Enum.TryParse<NavigationPaneMode>(raw, true, out var mode)
+            ? mode
+            : NavigationPaneMode.Collapsed;
+    }
+
+    public async Task SetNavigationPaneModeAsync(NavigationPaneMode mode)
+    {
+        await WriteSettingAsync(NavigationPaneModeKey, mode.ToString()).ConfigureAwait(false);
+    }
+
     private Task<string?> ReadSettingAsync(string key)
     {
         try

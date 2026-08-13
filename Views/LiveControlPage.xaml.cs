@@ -8,12 +8,15 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml;
 
 using ChyguiSlide.Services;
+using ChyguiSlide.Services.Abstractions;
 
 namespace ChyguiSlide.Views;
 
 public sealed partial class LiveControlPage : Page
 {
     public LiveControlViewModel ViewModel { get; }
+    
+    private IProjectionDisplayService? _projectionDisplayService;
 
     public LiveControlPage()
     {
@@ -31,6 +34,9 @@ public sealed partial class LiveControlPage : Page
         // выставляет SelectedItem → ShowSongSections → пересборка слайда → мерцание видеофона.
         await ViewModel.InitializeAsync();
         ScrollCurrentSectionIntoView();
+        
+        // Инициализация зеркалирования экрана проекции
+        InitializeProjectionMirror();
     }
 
     protected override void OnNavigatedTo(Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
@@ -210,5 +216,39 @@ public sealed partial class LiveControlPage : Page
         }
 
         return null;
+    }
+
+    private void InitializeProjectionMirror()
+    {
+        _projectionDisplayService = App.AppHost.Services.GetService<IProjectionDisplayService>();
+        if (_projectionDisplayService is null)
+        {
+            return;
+        }
+
+        // Используем существующий механизм сервиса для привязки превью
+        // Сервис автоматически управляет перемещением ProjectionStageView между окном и превью
+        _projectionDisplayService.BindProgramPreviewHost(PreviewStageHost);
+
+        // Подписываемся на изменения видимости окна проекции
+        _projectionDisplayService.ProjectionWindowVisibilityChanged += OnProjectionWindowVisibilityChanged;
+    }
+
+    private void OnProjectionWindowVisibilityChanged(object? sender, bool isVisible)
+    {
+        // Показываем превью только когда трансляция запущена
+        if (isVisible)
+        {
+            PreviewStageHost.Visibility = Visibility.Visible;
+            PreviewIdleHint.Visibility = Visibility.Collapsed;
+            
+            // Принудительно обновляем превью при открытии трансляции
+            _projectionDisplayService?.EnsureContentVisible();
+        }
+        else
+        {
+            PreviewStageHost.Visibility = Visibility.Collapsed;
+            PreviewIdleHint.Visibility = Visibility.Visible;
+        }
     }
 }

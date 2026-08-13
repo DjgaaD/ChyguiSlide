@@ -1,3 +1,4 @@
+using ChyguiSlide.Controls;
 using ChyguiSlide.ViewModels;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -8,44 +9,47 @@ public sealed partial class ProjectionWindow : Window
 {
     public ProjectionDisplayViewModel ViewModel { get; }
 
-    private MediaPlayerElement? _currentVideoPlayer;
-    private readonly ProjectionTransitionPlayer _transitionPlayer;
+    public Grid StageHostGrid => StageHost;
 
-    public MediaPlayerElement? VideoPlayerElement => _currentVideoPlayer ?? VideoPlayer;
+    public ProjectionStageView? Stage { get; private set; }
 
-    public MediaPlayerElement BackgroundVideoPlayerElement => BackgroundVideoPlayer;
+    public MediaPlayerElement? VideoPlayerElement => Stage?.VideoPlayerElement;
 
-    public Microsoft.UI.Xaml.Controls.Image? NdiVideoImageElement => NdiVideoImage;
+    public MediaPlayerElement? BackgroundVideoPlayerElement => Stage?.BackgroundVideoPlayerElement;
 
-    public Grid? ContentHostGrid => ContentHost;
+    public Image? NdiVideoImageElement => Stage?.NdiVideoImageElement;
 
-    public Grid? ProjectionRootGrid => ProjectionRoot;
+    public Grid? ContentHostGrid => Stage?.ContentHostGrid;
 
-    public void SetVideoPlayer(MediaPlayerElement? videoPlayer)
-    {
-        _currentVideoPlayer = videoPlayer;
-    }
+    public Grid? ProjectionRootGrid => Stage?.ProjectionRootGrid;
 
     public ProjectionWindow(ProjectionDisplayViewModel viewModel)
     {
         InitializeComponent();
         ViewModel = viewModel;
-        ProjectionRoot.DataContext = ViewModel;
-
-        _transitionPlayer = new ProjectionTransitionPlayer(
-            IncomingSlideLayer,
-            OutgoingSlideLayer);
-        ViewModel.SetTransitionPlayer(
-            (mode, apply) =>
-                _transitionPlayer.PlayAsync(mode, apply, ViewModel.SectionTransitionDurationMs),
-            () => _transitionPlayer.ResetVisualState());
-
-        ProjectionRoot.SizeChanged += OnProjectionRootSizeChanged;
-        Closed += (_, _) => ViewModel.SetTransitionPlayer(null);
+        SystemBackdrop = null;
     }
 
-    private void OnProjectionRootSizeChanged(object sender, Microsoft.UI.Xaml.SizeChangedEventArgs e)
+    public void AttachStage(ProjectionStageView stage)
     {
-        ViewModel.UpdateWindowSize(e.NewSize.Width, e.NewSize.Height);
+        DetachStage();
+        Stage = stage;
+        StageHost.Children.Add(stage);
     }
+
+    public ProjectionStageView? DetachStage()
+    {
+        var stage = Stage;
+        if (stage is null)
+        {
+            return null;
+        }
+
+        StageHost.Children.Remove(stage);
+        Stage = null;
+        return stage;
+    }
+
+    public void SetVideoPlayer(MediaPlayerElement? videoPlayer)
+        => Stage?.SetVideoPlayer(videoPlayer);
 }

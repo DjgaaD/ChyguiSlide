@@ -1,0 +1,259 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<UserControl
+    x:Class="ChyguiSlide.Controls.ProjectionStageView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:viewModels="using:ChyguiSlide.ViewModels"
+    xmlns:converters="using:ChyguiSlide.Converters"
+    xmlns:controls="using:ChyguiSlide.Controls"
+    mc:Ignorable="d" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+
+    <Grid
+        x:Name="ProjectionRoot"
+        Background="{Binding BackgroundBrush, FallbackValue=Black, TargetNullValue=Black}">
+        <Grid.Resources>
+            <converters:StringToTextAlignmentConverter x:Key="StringToTextAlignmentConverter" />
+            <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+
+            <DataTemplate x:Key="ProjectionLineTemplate" x:DataType="viewModels:ProjectionLineItem">
+                <controls:OutlinedTextBlock
+                    HorizontalAlignment="Stretch"
+                    Opacity="{Binding Opacity}"
+                    Text="{Binding Text}"
+                    FontFamilyName="{Binding ElementName=ProjectionRoot, Path=DataContext.FontFamilyName}"
+                    DisplayFontSize="{Binding ElementName=ProjectionRoot, Path=DataContext.DisplayFontSize}"
+                    FontWeightValue="{Binding FontWeight}"
+                    FillBrush="{Binding Foreground}"
+                    TextAlignmentValue="{Binding TextAlignment, Converter={StaticResource StringToTextAlignmentConverter}}"
+                    OutlineBrush="{Binding ElementName=ProjectionRoot, Path=DataContext.TextOutlineBrush}"
+                    OutlineThickness="{Binding ElementName=ProjectionRoot, Path=DataContext.TextOutlineThickness}"
+                    OutlineOpacity="{Binding ElementName=ProjectionRoot, Path=DataContext.TextOutlineOpacity}"
+                    TextWrapping="NoWrap" />
+            </DataTemplate>
+
+            <DataTemplate x:Key="OutgoingLineTemplate" x:DataType="viewModels:ProjectionLineItem">
+                <controls:OutlinedTextBlock
+                    HorizontalAlignment="Stretch"
+                    Opacity="{Binding Opacity}"
+                    Text="{Binding Text}"
+                    FontFamilyName="{Binding ElementName=ProjectionRoot, Path=DataContext.FontFamilyName}"
+                    DisplayFontSize="{Binding ElementName=ProjectionRoot, Path=DataContext.OutgoingDisplayFontSize}"
+                    FontWeightValue="{Binding FontWeight}"
+                    FillBrush="{Binding Foreground}"
+                    TextAlignmentValue="{Binding TextAlignment, Converter={StaticResource StringToTextAlignmentConverter}}"
+                    OutlineBrush="{Binding ElementName=ProjectionRoot, Path=DataContext.TextOutlineBrush}"
+                    OutlineThickness="{Binding ElementName=ProjectionRoot, Path=DataContext.TextOutlineThickness}"
+                    OutlineOpacity="{Binding ElementName=ProjectionRoot, Path=DataContext.TextOutlineOpacity}"
+                    TextWrapping="NoWrap" />
+            </DataTemplate>
+        </Grid.Resources>
+
+        <Grid>
+            <Image
+                Stretch="UniformToFill"
+                Source="{Binding BackgroundImageSource}"
+                Visibility="{Binding IsBackgroundImageVisible, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+            <MediaPlayerElement
+                x:Name="BackgroundVideoPlayer"
+                AreTransportControlsEnabled="False"
+                AutoPlay="True"
+                Stretch="UniformToFill"
+                Visibility="{Binding IsBackgroundVideoVisible, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+            <Grid x:Name="ContentHost" Opacity="{Binding ContentOpacity}">
+                <MediaPlayerElement
+                    x:Name="VideoPlayer"
+                    Visibility="{Binding IsVideoMode, Converter={StaticResource BoolToVisibilityConverter}}"
+                    AreTransportControlsEnabled="False"
+                    AutoPlay="True"
+                    Stretch="Uniform" />
+
+                <Image
+                    x:Name="NdiVideoImage"
+                    Visibility="{Binding IsNdiVideoMode, Converter={StaticResource BoolToVisibilityConverter}}"
+                    Stretch="Uniform"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center" />
+
+                <Grid
+                    x:Name="SlideStage"
+                    Visibility="{Binding IsVideoMode, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Invert}"
+                    Margin="48,40">
+                    <Grid
+                        x:Name="IncomingSlideLayer"
+                        Background="Transparent"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch">
+                        <controls:OutlinedTextBlock
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Top"
+                            FontFamilyName="{Binding FontFamilyName}"
+                            DisplayFontSize="{Binding ReferenceFontSize}"
+                            FontWeightValue="{Binding FontWeight}"
+                            FillBrush="{Binding PrimaryBrush}"
+                            Opacity="0.9"
+                            Text="{Binding ReferenceCaption}"
+                            TextAlignmentValue="{Binding BibleReferenceAlignment, Converter={StaticResource StringToTextAlignmentConverter}}"
+                            OutlineBrush="{Binding TextOutlineBrush}"
+                            OutlineThickness="{Binding TextOutlineThickness}"
+                            OutlineOpacity="{Binding TextOutlineOpacity}"
+                            TextWrapping="WrapWholeWords"
+                            Visibility="{Binding IsReferenceTopOfScreenVisible, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                        <StackPanel HorizontalAlignment="Stretch" VerticalAlignment="Center" Spacing="16">
+                            <controls:OutlinedTextBlock
+                                HorizontalAlignment="Stretch"
+                                FontFamilyName="{Binding FontFamilyName}"
+                                DisplayFontSize="{Binding ReferenceFontSize}"
+                                FontWeightValue="{Binding FontWeight}"
+                                FillBrush="{Binding PrimaryBrush}"
+                                Opacity="0.9"
+                                Text="{Binding ReferenceCaption}"
+                                TextAlignmentValue="{Binding BibleReferenceAlignment, Converter={StaticResource StringToTextAlignmentConverter}}"
+                                OutlineBrush="{Binding TextOutlineBrush}"
+                                OutlineThickness="{Binding TextOutlineThickness}"
+                                OutlineOpacity="{Binding TextOutlineOpacity}"
+                                TextWrapping="WrapWholeWords"
+                                Visibility="{Binding IsReferenceAboveVisible, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                            <ItemsControl
+                                ItemsSource="{Binding Lines}"
+                                ItemTemplate="{StaticResource ProjectionLineTemplate}"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Stretch">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Spacing="12" HorizontalAlignment="Stretch" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                            </ItemsControl>
+
+                            <controls:OutlinedTextBlock
+                                HorizontalAlignment="Stretch"
+                                FontFamilyName="{Binding FontFamilyName}"
+                                DisplayFontSize="{Binding ReferenceFontSize}"
+                                FontWeightValue="{Binding FontWeight}"
+                                FillBrush="{Binding PrimaryBrush}"
+                                Opacity="0.9"
+                                Text="{Binding ReferenceCaption}"
+                                TextAlignmentValue="{Binding BibleReferenceAlignment, Converter={StaticResource StringToTextAlignmentConverter}}"
+                                OutlineBrush="{Binding TextOutlineBrush}"
+                                OutlineThickness="{Binding TextOutlineThickness}"
+                                OutlineOpacity="{Binding TextOutlineOpacity}"
+                                TextWrapping="WrapWholeWords"
+                                Visibility="{Binding IsReferenceBelowVisible, Converter={StaticResource BoolToVisibilityConverter}}" />
+                        </StackPanel>
+
+                        <controls:OutlinedTextBlock
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Bottom"
+                            FontFamilyName="{Binding FontFamilyName}"
+                            DisplayFontSize="{Binding ReferenceFontSize}"
+                            FontWeightValue="{Binding FontWeight}"
+                            FillBrush="{Binding PrimaryBrush}"
+                            Opacity="0.9"
+                            Text="{Binding ReferenceCaption}"
+                            TextAlignmentValue="{Binding BibleReferenceAlignment, Converter={StaticResource StringToTextAlignmentConverter}}"
+                            OutlineBrush="{Binding TextOutlineBrush}"
+                            OutlineThickness="{Binding TextOutlineThickness}"
+                            OutlineOpacity="{Binding TextOutlineOpacity}"
+                            TextWrapping="WrapWholeWords"
+                            Visibility="{Binding IsReferenceBottomOfScreenVisible, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    </Grid>
+
+                    <!-- Слой уходящего слайда для кроссфейда -->
+                    <Grid
+                        x:Name="OutgoingSlideLayer"
+                        Background="Transparent"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch"
+                        IsHitTestVisible="False"
+                        Opacity="0">
+                        <controls:OutlinedTextBlock
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Top"
+                            FontFamilyName="{Binding FontFamilyName}"
+                            DisplayFontSize="{Binding OutgoingReferenceFontSize}"
+                            FontWeightValue="{Binding FontWeight}"
+                            FillBrush="{Binding PrimaryBrush}"
+                            Opacity="0.9"
+                            Text="{Binding OutgoingReferenceCaption}"
+                            TextAlignmentValue="{Binding BibleReferenceAlignment, Converter={StaticResource StringToTextAlignmentConverter}}"
+                            OutlineBrush="{Binding TextOutlineBrush}"
+                            OutlineThickness="{Binding TextOutlineThickness}"
+                            OutlineOpacity="{Binding TextOutlineOpacity}"
+                            TextWrapping="WrapWholeWords"
+                            Visibility="{Binding IsOutgoingReferenceTopOfScreenVisible, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                        <StackPanel HorizontalAlignment="Stretch" VerticalAlignment="Center" Spacing="16">
+                            <controls:OutlinedTextBlock
+                                HorizontalAlignment="Stretch"
+                                FontFamilyName="{Binding FontFamilyName}"
+                                DisplayFontSize="{Binding OutgoingReferenceFontSize}"
+                                FontWeightValue="{Binding FontWeight}"
+                                FillBrush="{Binding PrimaryBrush}"
+                                Opacity="0.9"
+                                Text="{Binding OutgoingReferenceCaption}"
+                                TextAlignmentValue="{Binding BibleReferenceAlignment, Converter={StaticResource StringToTextAlignmentConverter}}"
+                                OutlineBrush="{Binding TextOutlineBrush}"
+                                OutlineThickness="{Binding TextOutlineThickness}"
+                                OutlineOpacity="{Binding TextOutlineOpacity}"
+                                TextWrapping="WrapWholeWords"
+                                Visibility="{Binding IsOutgoingReferenceAboveVisible, Converter={StaticResource BoolToVisibilityConverter}}" />
+
+                            <ItemsControl
+                                ItemsSource="{Binding OutgoingLines}"
+                                ItemTemplate="{StaticResource OutgoingLineTemplate}"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Stretch">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Spacing="12" HorizontalAlignment="Stretch" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                            </ItemsControl>
+
+                            <controls:OutlinedTextBlock
+                                HorizontalAlignment="Stretch"
+                                FontFamilyName="{Binding FontFamilyName}"
+                                DisplayFontSize="{Binding OutgoingReferenceFontSize}"
+                                FontWeightValue="{Binding FontWeight}"
+                                FillBrush="{Binding PrimaryBrush}"
+                                Opacity="0.9"
+                                Text="{Binding OutgoingReferenceCaption}"
+                                TextAlignmentValue="{Binding BibleReferenceAlignment, Converter={StaticResource StringToTextAlignmentConverter}}"
+                                OutlineBrush="{Binding TextOutlineBrush}"
+                                OutlineThickness="{Binding TextOutlineThickness}"
+                                OutlineOpacity="{Binding TextOutlineOpacity}"
+                                TextWrapping="WrapWholeWords"
+                                Visibility="{Binding IsOutgoingReferenceBelowVisible, Converter={StaticResource BoolToVisibilityConverter}}" />
+                        </StackPanel>
+
+                        <controls:OutlinedTextBlock
+                            HorizontalAlignment="Stretch"
+                            VerticalAlignment="Bottom"
+                            FontFamilyName="{Binding FontFamilyName}"
+                            DisplayFontSize="{Binding OutgoingReferenceFontSize}"
+                            FontWeightValue="{Binding FontWeight}"
+                            FillBrush="{Binding PrimaryBrush}"
+                            Opacity="0.9"
+                            Text="{Binding OutgoingReferenceCaption}"
+                            TextAlignmentValue="{Binding BibleReferenceAlignment, Converter={StaticResource StringToTextAlignmentConverter}}"
+                            OutlineBrush="{Binding TextOutlineBrush}"
+                            OutlineThickness="{Binding TextOutlineThickness}"
+                            OutlineOpacity="{Binding TextOutlineOpacity}"
+                            TextWrapping="WrapWholeWords"
+                            Visibility="{Binding IsOutgoingReferenceBottomOfScreenVisible, Converter={StaticResource BoolToVisibilityConverter}}" />
+                    </Grid>
+                </Grid>
+            </Grid>
+
+            <Rectangle
+                Fill="Black"
+                Opacity="{Binding BlackoutOpacity}" />
+        </Grid>
+    </Grid>
+</UserControl>

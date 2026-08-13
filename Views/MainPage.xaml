@@ -46,6 +46,7 @@
         PaneDisplayMode="Left"
         OpenPaneLength="168"
         CompactPaneLength="48"
+        IsPaneOpen="False"
         IsBackButtonVisible="Collapsed"
         IsSettingsVisible="False"
         SelectedItem="{x:Bind ViewModel.SelectedItem, Mode=TwoWay}"

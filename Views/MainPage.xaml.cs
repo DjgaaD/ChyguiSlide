@@ -1,5 +1,6 @@
 using ChyguiSlide.Services.Abstractions;
 using ChyguiSlide.Services.Implementations;
+using ChyguiSlide.Services.Models;
 using ChyguiSlide.ViewModels;
 using ChyguiSlide.Views.Dialogs;
 using Microsoft.Extensions.DependencyInjection;
@@ -7,13 +8,11 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
-using Windows.Storage;
 
 namespace ChyguiSlide.Views;
 
 public sealed partial class MainPage : Page
 {
-    private const string NavigationPaneOpenKey = "NavigationPaneIsOpen";
     private readonly HotkeyDispatcher _hotkeyDispatcher;
     private bool _startupUpdateCheckStarted;
 
@@ -27,6 +26,34 @@ public sealed partial class MainPage : Page
         DataContext = ViewModel;
         Loaded += OnPageLoaded;
         Unloaded += OnPageUnloaded;
+    }
+
+    /// <summary>Применить предпочтение свёрнутости меню (из настроек).</summary>
+    public void ApplyNavigationPaneMode(NavigationPaneMode mode)
+    {
+        var isOpen = mode == NavigationPaneMode.Expanded;
+        if (ShellNav.IsPaneOpen != isOpen)
+        {
+            ShellNav.IsPaneOpen = isOpen;
+        }
+
+        UpdateNavLabelVisibility(isOpen);
+    }
+
+    public static void TryApplyNavigationPaneMode(NavigationPaneMode mode)
+    {
+        try
+        {
+            if (App.MainWindow?.Content is Frame rootFrame
+                && rootFrame.Content is MainPage mainPage)
+            {
+                mainPage.ApplyNavigationPaneMode(mode);
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"TryApplyNavigationPaneMode: {ex.Message}");
+        }
     }
 
     private async void OnPageLoaded(object sender, RoutedEventArgs e)
@@ -80,57 +107,34 @@ public sealed partial class MainPage : Page
         ShellNav.SelectedItem = ViewModel.SelectedItem;
         NavigateToSelection(ViewModel.SelectedItem, new EntranceNavigationTransitionInfo());
 
-        RestoreNavigationPaneState();
         UpdateNavLabelVisibility(ShellNav.IsPaneOpen);
+        _ = RestoreNavigationPaneStateAsync();
 
-        ShellNav.DisplayModeChanged += OnNavigationViewDisplayModeChanged;
         ShellNav.PaneOpening += OnNavigationPaneOpening;
         ShellNav.PaneClosing += OnNavigationPaneClosing;
     }
 
-    private void RestoreNavigationPaneState()
+    private async Task RestoreNavigationPaneStateAsync()
     {
         try
         {
-            var localSettings = ApplicationData.Current.LocalSettings;
-            if (localSettings.Values.TryGetValue(NavigationPaneOpenKey, out var value) && value is bool isOpen)
-            {
-                ShellNav.IsPaneOpen = isOpen;
-            }
+            var settings = App.AppHost.Services.GetRequiredService<IDisplaySettingsService>();
+            var mode = await settings.GetNavigationPaneModeAsync();
+            ApplyNavigationPaneMode(mode);
         }
         catch
         {
-            // Игнорируем ошибки при восстановлении настроек
+            ApplyNavigationPaneMode(NavigationPaneMode.Collapsed);
         }
-    }
-
-    private void SaveNavigationPaneState()
-    {
-        try
-        {
-            var localSettings = ApplicationData.Current.LocalSettings;
-            localSettings.Values[NavigationPaneOpenKey] = ShellNav.IsPaneOpen;
-        }
-        catch
-        {
-            // Игнорируем ошибки при сохранении настроек
-        }
-    }
-
-    private void OnNavigationViewDisplayModeChanged(NavigationView sender, NavigationViewDisplayModeChangedEventArgs args)
-    {
-        SaveNavigationPaneState();
     }
 
     private void OnNavigationPaneOpening(NavigationView sender, object args)
     {
-        SaveNavigationPaneState();
         UpdateNavLabelVisibility(true);
     }
 
     private void OnNavigationPaneClosing(NavigationView sender, NavigationViewPaneClosingEventArgs args)
     {
-        SaveNavigationPaneState();
         UpdateNavLabelVisibility(false);
     }
 

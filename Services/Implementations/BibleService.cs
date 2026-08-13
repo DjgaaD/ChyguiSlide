@@ -22,6 +22,9 @@ public sealed class BibleService : IBibleService
     private readonly SemaphoreSlim _loadLock = new(1, 1);
     private List<BibleBook> _books = new();
     private Dictionary<string, List<BibleVerse>> _versesByBook = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, IReadOnlyList<int>> _chaptersByBook = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<(string BookId, int Chapter), IReadOnlyList<BibleVerse>> _versesByChapter =
+        new(new BookChapterComparer());
     private bool _loaded;
 
     public string TranslationName => "Синодальный перевод";
@@ -120,6 +123,23 @@ public sealed class BibleService : IBibleService
             }
 
             _versesByBook = versesByBook;
+            _chaptersByBook = new Dictionary<string, IReadOnlyList<int>>(StringComparer.OrdinalIgnoreCase);
+            _versesByChapter = new Dictionary<(string BookId, int Chapter), IReadOnlyList<BibleVerse>>(new BookChapterComparer());
+
+            foreach (var (bookId, list) in versesByBook)
+            {
+                var byChapter = list
+                    .GroupBy(v => v.Chapter)
+                    .OrderBy(g => g.Key)
+                    .ToList();
+
+                _chaptersByBook[bookId] = byChapter.Select(g => g.Key).ToList();
+                foreach (var group in byChapter)
+                {
+                    _versesByChapter[(bookId, group.Key)] = group.OrderBy(v => v.Verse).ToList();
+                }
+            }
+
             _books = bookMeta
                 .Select(pair =>
                 {
@@ -149,25 +169,11 @@ public sealed class BibleService : IBibleService
 
     public IReadOnlyList<BibleBook> GetBooks() => _books;
 
-    public IReadOnlyList<int> GetChapters(string bookId)
-    {
-        if (!_versesByBook.TryGetValue(bookId, out var verses))
-        {
-            return Array.Empty<int>();
-        }
+    public IReadOnlyList<int> GetChapters(string bookId) =>
+        _chaptersByBook.TryGetValue(bookId, out var chapters) ? chapters : Array.Empty<int>();
 
-        return verses.Select(v => v.Chapter).Distinct().OrderBy(c => c).ToList();
-    }
-
-    public IReadOnlyList<BibleVerse> GetVerses(string bookId, int chapter)
-    {
-        if (!_versesByBook.TryGetValue(bookId, out var verses))
-        {
-            return Array.Empty<BibleVerse>();
-        }
-
-        return verses.Where(v => v.Chapter == chapter).ToList();
-    }
+    public IReadOnlyList<BibleVerse> GetVerses(string bookId, int chapter) =>
+        _versesByChapter.TryGetValue((bookId, chapter), out var verses) ? verses : Array.Empty<BibleVerse>();
 
     public IReadOnlyList<BibleVerse> GetPassage(string bookId, int chapter, int fromVerse, int? toVerse = null)
     {
@@ -271,5 +277,15 @@ public sealed class BibleService : IBibleService
 
         [JsonPropertyName("text")]
         public string? Text { get; set; }
+    }
+
+    private sealed class BookChapterComparer : IEqualityComparer<(string BookId, int Chapter)>
+    {
+        public bool Equals((string BookId, int Chapter) x, (string BookId, int Chapter) y) =>
+            x.Chapter == y.Chapter
+            && string.Equals(x.BookId, y.BookId, StringComparison.OrdinalIgnoreCase);
+
+        public int GetHashCode((string BookId, int Chapter) obj) =>
+            HashCode.Combine(StringComparer.OrdinalIgnoreCase.GetHashCode(obj.BookId), obj.Chapter);
     }
 }

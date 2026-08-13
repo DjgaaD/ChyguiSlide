@@ -232,9 +232,10 @@ public partial class BibleViewModel : ObservableObject
             return;
         }
 
-        foreach (var chapter in _bibleService.GetChapters(value.BookId))
+        var chapters = _bibleService.GetChapters(value.BookId);
+        for (var i = 0; i < chapters.Count; i++)
         {
-            Chapters.Add(chapter);
+            Chapters.Add(chapters[i]);
         }
 
         if (!_suppressAutoChapterSelect)
@@ -255,9 +256,10 @@ public partial class BibleViewModel : ObservableObject
             return;
         }
 
-        foreach (var verse in _bibleService.GetVerses(SelectedBook.BookId, value.Value))
+        var verses = _bibleService.GetVerses(SelectedBook.BookId, value.Value);
+        for (var i = 0; i < verses.Count; i++)
         {
-            Verses.Add(new BibleVerseItem(verse, SelectedBook));
+            Verses.Add(new BibleVerseItem(verses[i], SelectedBook));
         }
 
         SelectedVerse = Verses.FirstOrDefault();

@@ -12,6 +12,12 @@ public interface IProjectionDisplayService
     event EventHandler<bool>? BlackoutStateChanged;
     event EventHandler<bool>? NdiModeStateChanged;
 
+    /// <summary>Единственная сцена проекции (для зеркала в Live Control).</summary>
+    UIElement? ProgramStage { get; }
+
+    /// <summary>Привязать хост превью на странице трансляции.</summary>
+    void BindProgramPreviewHost(Panel? host);
+
     Task ShowAsync();
     void Hide();
     void SetBlackout(bool isBlackout);

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Data.Common;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using ChyguiSlide.Data;
 using ChyguiSlide.Services;
@@ -129,7 +130,11 @@ namespace ChyguiSlide
                 LogToFile("Активация окна...");
                 window.Activate();
                 AppWindowIconHelper.TryApply(window, LogToFile);
+                ApplyMainWindowMinimumSize(window);
                 LogToFile("Окно активировано");
+
+                // Библия ~8 МБ JSON — грузим в фоне, чтобы первое открытие раздела не ждало парсинг.
+                _ = PreloadBibleAsync();
 
                 try
                 {
@@ -159,6 +164,19 @@ namespace ChyguiSlide
                     LogToFile($"Внутренняя ошибка: {ex.InnerException}");
                 }
                 throw;
+            }
+        }
+
+        private static async Task PreloadBibleAsync()
+        {
+            try
+            {
+                await AppHost.Services.GetRequiredService<IBibleService>().EnsureLoadedAsync();
+                LogToFile("Библия предзагружена");
+            }
+            catch (Exception ex)
+            {
+                LogToFile($"Предзагрузка Библии: {ex.Message}");
             }
         }
 
@@ -198,6 +216,77 @@ namespace ChyguiSlide
         /// При закрытии главного окна закрываем проектор и освобождаем ресурсы,
         /// иначе окно трансляции остаётся жить отдельно.
         /// </summary>
+        private static IntPtr _mainWindowMinSizeProc;
+        private static IntPtr _mainWindowOriginalWndProc;
+        private static WndProc? _mainWindowMinSizeDelegate;
+        private const int GwlpWndProc = -4;
+        private const uint WmGetMinMaxInfo = 0x0024;
+        private const int MinWindowWidthDip = 960;
+        private const int MinWindowHeightDip = 540;
+
+        private static void ApplyMainWindowMinimumSize(Window window)
+        {
+            try
+            {
+                var hwnd = WindowNative.GetWindowHandle(window);
+                if (hwnd == IntPtr.Zero)
+                {
+                    return;
+                }
+
+                _mainWindowMinSizeDelegate = MainWindowMinSizeWndProc;
+                _mainWindowMinSizeProc = Marshal.GetFunctionPointerForDelegate(_mainWindowMinSizeDelegate);
+                _mainWindowOriginalWndProc = SetWindowLongPtr(hwnd, GwlpWndProc, _mainWindowMinSizeProc);
+            }
+            catch (Exception ex)
+            {
+                LogToFile($"Минимальный размер окна: {ex.Message}");
+            }
+        }
+
+        private static IntPtr MainWindowMinSizeWndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
+        {
+            if (msg == WmGetMinMaxInfo && lParam != IntPtr.Zero)
+            {
+                var info = Marshal.PtrToStructure<MinMaxInfo>(lParam);
+                var dpi = GetDpiForWindow(hWnd);
+                var scale = dpi <= 0 ? 1.0 : dpi / 96.0;
+                info.ptMinTrackSize.x = (int)Math.Round(MinWindowWidthDip * scale);
+                info.ptMinTrackSize.y = (int)Math.Round(MinWindowHeightDip * scale);
+                Marshal.StructureToPtr(info, lParam, fDeleteOld: false);
+            }
+
+            return CallWindowProc(_mainWindowOriginalWndProc, hWnd, msg, wParam, lParam);
+        }
+
+        private delegate IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct Point
+        {
+            public int x;
+            public int y;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MinMaxInfo
+        {
+            public Point ptReserved;
+            public Point ptMaxSize;
+            public Point ptMaxPosition;
+            public Point ptMinTrackSize;
+            public Point ptMaxTrackSize;
+        }
+
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
+        private static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+        [DllImport("user32.dll", EntryPoint = "CallWindowProcW")]
+        private static extern IntPtr CallWindowProc(IntPtr lpPrevWndFunc, IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        private static extern uint GetDpiForWindow(IntPtr hwnd);
+
         private static void OnMainWindowClosed(object sender, WindowEventArgs args)
         {
             try

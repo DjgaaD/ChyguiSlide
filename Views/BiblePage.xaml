@@ -9,163 +9,13 @@
     Loaded="OnPageLoaded"
     mc:Ignorable="d">
 
-    <Grid Margin="24,16">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-
+    <Grid Margin="16,12">
         <Grid.Resources>
             <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
-            <converters:HexToBrushConverter x:Key="HexToBrushConverter" />
-
-            <Style x:Key="BibleTileItemStyle" TargetType="GridViewItem">
-                <Setter Property="Margin" Value="2" />
-                <Setter Property="Padding" Value="0" />
-                <Setter Property="MinWidth" Value="0" />
-                <Setter Property="MinHeight" Value="0" />
-                <Setter Property="Background" Value="Transparent" />
-                <Setter Property="BorderThickness" Value="0" />
-                <Setter Property="HorizontalAlignment" Value="Stretch" />
-                <Setter Property="VerticalAlignment" Value="Stretch" />
-                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                <Setter Property="VerticalContentAlignment" Value="Stretch" />
-                <Setter Property="UseSystemFocusVisuals" Value="False" />
-                <Setter Property="FocusVisualPrimaryThickness" Value="0" />
-                <Setter Property="FocusVisualSecondaryThickness" Value="0" />
-                <Setter Property="Template">
-                    <Setter.Value>
-                        <ControlTemplate TargetType="GridViewItem">
-                            <Grid Background="Transparent">
-                                <VisualStateManager.VisualStateGroups>
-                                    <VisualStateGroup x:Name="CommonStates">
-                                        <VisualState x:Name="Normal" />
-                                        <VisualState x:Name="PointerOver">
-                                            <VisualState.Setters>
-                                                <Setter Target="HoverOverlay.Opacity" Value="0.12" />
-                                            </VisualState.Setters>
-                                        </VisualState>
-                                        <VisualState x:Name="Pressed">
-                                            <VisualState.Setters>
-                                                <Setter Target="HoverOverlay.Opacity" Value="0.18" />
-                                            </VisualState.Setters>
-                                        </VisualState>
-                                        <VisualState x:Name="Selected">
-                                            <VisualState.Setters>
-                                                <Setter Target="SelectionChrome.BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}" />
-                                                <Setter Target="SelectionOverlay.Opacity" Value="0.42" />
-                                            </VisualState.Setters>
-                                        </VisualState>
-                                        <VisualState x:Name="SelectedPointerOver">
-                                            <VisualState.Setters>
-                                                <Setter Target="SelectionChrome.BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}" />
-                                                <Setter Target="SelectionOverlay.Opacity" Value="0.48" />
-                                                <Setter Target="HoverOverlay.Opacity" Value="0.08" />
-                                            </VisualState.Setters>
-                                        </VisualState>
-                                        <VisualState x:Name="SelectedPressed">
-                                            <VisualState.Setters>
-                                                <Setter Target="SelectionChrome.BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}" />
-                                                <Setter Target="SelectionOverlay.Opacity" Value="0.52" />
-                                                <Setter Target="HoverOverlay.Opacity" Value="0.12" />
-                                            </VisualState.Setters>
-                                        </VisualState>
-                                        <VisualState x:Name="PointerOverSelected">
-                                            <VisualState.Setters>
-                                                <Setter Target="SelectionChrome.BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}" />
-                                                <Setter Target="SelectionOverlay.Opacity" Value="0.48" />
-                                                <Setter Target="HoverOverlay.Opacity" Value="0.08" />
-                                            </VisualState.Setters>
-                                        </VisualState>
-                                        <VisualState x:Name="PressedSelected">
-                                            <VisualState.Setters>
-                                                <Setter Target="SelectionChrome.BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}" />
-                                                <Setter Target="SelectionOverlay.Opacity" Value="0.52" />
-                                                <Setter Target="HoverOverlay.Opacity" Value="0.12" />
-                                            </VisualState.Setters>
-                                        </VisualState>
-                                        <VisualState x:Name="Disabled">
-                                            <VisualState.Setters>
-                                                <Setter Target="SelectionChrome.Opacity" Value="0.5" />
-                                            </VisualState.Setters>
-                                        </VisualState>
-                                        <VisualState x:Name="SelectedDisabled">
-                                            <VisualState.Setters>
-                                                <Setter Target="SelectionChrome.BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}" />
-                                                <Setter Target="SelectionOverlay.Opacity" Value="0.42" />
-                                                <Setter Target="SelectionChrome.Opacity" Value="0.5" />
-                                            </VisualState.Setters>
-                                        </VisualState>
-                                    </VisualStateGroup>
-                                </VisualStateManager.VisualStateGroups>
-
-                                <!-- Толщина рамки всегда 4 — размер плитки не прыгает при выборе -->
-                                <Border
-                                    x:Name="SelectionChrome"
-                                    Background="Transparent"
-                                    BorderBrush="Transparent"
-                                    BorderThickness="4"
-                                    CornerRadius="8">
-                                    <Grid>
-                                        <ContentPresenter
-                                            Content="{TemplateBinding Content}"
-                                            ContentTemplate="{TemplateBinding ContentTemplate}"
-                                            ContentTransitions="{TemplateBinding ContentTransitions}"
-                                            HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
-                                            VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
-                                        <Border
-                                            x:Name="SelectionOverlay"
-                                            Background="White"
-                                            CornerRadius="5"
-                                            IsHitTestVisible="False"
-                                            Opacity="0" />
-                                        <Border
-                                            x:Name="HoverOverlay"
-                                            Background="White"
-                                            CornerRadius="5"
-                                            IsHitTestVisible="False"
-                                            Opacity="0" />
-                                    </Grid>
-                                </Border>
-                            </Grid>
-                        </ControlTemplate>
-                    </Setter.Value>
-                </Setter>
-            </Style>
         </Grid.Resources>
-
-        <Grid Grid.Row="0" Margin="0,0,0,12">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-
-            <StackPanel Spacing="4">
-                <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="Библия" />
-                <TextBlock
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Text="{Binding TranslationName}" />
-            </StackPanel>
-
-            <StackPanel
-                Grid.Column="1"
-                Orientation="Horizontal"
-                Spacing="8"
-                VerticalAlignment="Center">
-                <ProgressRing
-                    Width="24"
-                    Height="24"
-                    IsActive="{Binding IsBusy}" />
-                <Button
-                    Content="Показать на экране"
-                    Command="{Binding StartProjectionCommand}"
-                    Style="{StaticResource AccentButtonStyle}" />
-            </StackPanel>
-        </Grid>
 
         <!-- Режим списков -->
         <Grid
-            Grid.Row="1"
             ColumnSpacing="12"
             Visibility="{Binding IsListPickerLayout, Converter={StaticResource BoolToVisibilityConverter}}">
             <Grid.ColumnDefinitions>
@@ -218,31 +68,20 @@
                 Background="{ThemeResource LayerFillColorDefaultBrush}"
                 CornerRadius="12"
                 Padding="8">
-                <Grid RowSpacing="8">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-                    <TextBlock
-                        FontWeight="SemiBold"
-                        Text="Глава"
-                        HorizontalAlignment="Center" />
-                    <ListView
-                        x:Name="ChapterList"
-                        Grid.Row="1"
-                        ItemsSource="{Binding Chapters}"
-                        SelectionChanged="OnChapterSelectionChanged"
-                        SelectionMode="Single">
-                        <ListView.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock
-                                    HorizontalAlignment="Center"
-                                    FontSize="16"
-                                    Text="{Binding}" />
-                            </DataTemplate>
-                        </ListView.ItemTemplate>
-                    </ListView>
-                </Grid>
+                <ListView
+                    x:Name="ChapterList"
+                    ItemsSource="{Binding Chapters}"
+                    SelectionChanged="OnChapterSelectionChanged"
+                    SelectionMode="Single">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock
+                                HorizontalAlignment="Center"
+                                FontSize="16"
+                                Text="{Binding}" />
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
             </Border>
 
             <Border
@@ -256,10 +95,26 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
-                        <TextBlock
-                            Margin="8,4"
-                            Style="{StaticResource SubtitleTextBlockStyle}"
-                            Text="{Binding SelectionSummary}" />
+                        <Grid Margin="4,0,4,8" ColumnSpacing="8">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontWeight="SemiBold"
+                                Text="{Binding SelectionSummary}" />
+                            <StackPanel
+                                Grid.Column="1"
+                                Orientation="Horizontal"
+                                Spacing="8">
+                                <ProgressRing Width="22" Height="22" IsActive="{Binding IsBusy}" />
+                                <Button
+                                    Content="Показать на экране"
+                                    Command="{Binding StartProjectionCommand}"
+                                    Style="{StaticResource AccentButtonStyle}" />
+                            </StackPanel>
+                        </Grid>
                         <ListView
                             x:Name="VerseList"
                             Grid.Row="1"
@@ -277,7 +132,7 @@
                         </Grid.RowDefinitions>
                         <TextBlock
                             Margin="8,4"
-                            Style="{StaticResource SubtitleTextBlockStyle}"
+                            FontWeight="SemiBold"
                             Text="Результаты поиска" />
                         <ListView
                             Grid.Row="1"
@@ -297,21 +152,20 @@
             </Border>
         </Grid>
 
-        <!-- Режим плиток -->
+        <!-- Режим таблицы -->
         <Grid
-            Grid.Row="1"
-            ColumnSpacing="12"
+            ColumnSpacing="8"
             Visibility="{Binding IsGridPickerLayout, Converter={StaticResource BoolToVisibilityConverter}}">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="5*" MinWidth="380" />
-                <ColumnDefinition Width="7*" />
+                <ColumnDefinition Width="330" />
+                <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
             <Border
                 Grid.Column="0"
                 Background="{ThemeResource LayerFillColorDefaultBrush}"
-                CornerRadius="12"
-                Padding="8">
+                CornerRadius="8"
+                Padding="4">
                 <Grid>
                     <Grid Visibility="{Binding IsSearchMode, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Invert}">
                         <Grid.RowDefinitions>
@@ -319,8 +173,8 @@
                             <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
                         <TextBlock
-                            Margin="8,4"
-                            Style="{StaticResource SubtitleTextBlockStyle}"
+                            Margin="4,2"
+                            FontWeight="SemiBold"
                             Text="{Binding SelectionSummary}" />
                         <ListView
                             x:Name="GridVerseTextList"
@@ -339,7 +193,7 @@
                         </Grid.RowDefinitions>
                         <TextBlock
                             Margin="8,4"
-                            Style="{StaticResource SubtitleTextBlockStyle}"
+                            FontWeight="SemiBold"
                             Text="Результаты поиска" />
                         <ListView
                             Grid.Row="1"
@@ -358,17 +212,19 @@
                 </Grid>
             </Border>
 
-            <Grid Grid.Column="1" RowSpacing="12">
+            <Grid Grid.Column="1" RowSpacing="4">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
-                    <RowDefinition Height="1.15*" />
+                    <RowDefinition Height="*" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
                 <Grid ColumnSpacing="8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="180" />
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <AutoSuggestBox
                         x:Name="GridSearchBox"
@@ -378,190 +234,57 @@
                     <ComboBox
                         Grid.Column="1"
                         HorizontalAlignment="Stretch"
+                        VerticalAlignment="Center"
                         ItemsSource="{Binding TestamentFilterItems}"
                         SelectedItem="{Binding SelectedTestamentFilter, Mode=TwoWay}"
                         DisplayMemberPath="Title" />
+                    <ProgressRing
+                        Grid.Column="2"
+                        Width="22"
+                        Height="22"
+                        VerticalAlignment="Center"
+                        IsActive="{Binding IsBusy}" />
+                    <Button
+                        Grid.Column="3"
+                        VerticalAlignment="Center"
+                        Content="Показать на экране"
+                        Command="{Binding StartProjectionCommand}"
+                        Style="{StaticResource AccentButtonStyle}" />
                 </Grid>
 
                 <Border
-                    x:Name="BookGridHost"
                     Grid.Row="1"
                     Background="{ThemeResource LayerFillColorDefaultBrush}"
-                    CornerRadius="12"
-                    Padding="8"
-                    SizeChanged="OnPickerGridSizeChanged">
-                    <GridView
-                        x:Name="BookGrid"
-                        Padding="0"
-                        HorizontalAlignment="Stretch"
-                        VerticalAlignment="Stretch"
-                        ItemsSource="{Binding Books}"
-                        SelectedItem="{Binding SelectedBook, Mode=TwoWay}"
-                        SelectionMode="Single"
-                        SizeChanged="OnPickerGridSizeChanged"
-                        ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                        ScrollViewer.VerticalScrollBarVisibility="Auto"
-                        ItemContainerStyle="{StaticResource BibleTileItemStyle}">
-                        <GridView.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <ItemsWrapGrid MaximumRowsOrColumns="11" Orientation="Horizontal" />
-                            </ItemsPanelTemplate>
-                        </GridView.ItemsPanel>
-                        <GridView.ItemTemplate>
-                            <DataTemplate>
-                                <Border
-                                    HorizontalAlignment="Stretch"
-                                    VerticalAlignment="Stretch"
-                                    Background="{Binding CategoryColorHex, Converter={StaticResource HexToBrushConverter}}"
-                                    CornerRadius="6"
-                                    Padding="3">
-                                    <Viewbox
-                                        Stretch="Uniform"
-                                        StretchDirection="Both"
-                                        HorizontalAlignment="Stretch"
-                                        VerticalAlignment="Stretch"
-                                        Margin="8">
-                                        <StackPanel Spacing="1" HorizontalAlignment="Center">
-                                            <TextBlock
-                                                HorizontalAlignment="Center"
-                                                FontSize="28"
-                                                FontWeight="Bold"
-                                                Foreground="White"
-                                                Text="{Binding Abbreviation}" />
-                                            <TextBlock
-                                                HorizontalAlignment="Center"
-                                                FontSize="12"
-                                                Foreground="#E6FFFFFF"
-                                                Text="{Binding RussianName}"
-                                                TextTrimming="CharacterEllipsis"
-                                                MaxLines="1" />
-                                        </StackPanel>
-                                    </Viewbox>
-                                </Border>
-                            </DataTemplate>
-                        </GridView.ItemTemplate>
-                    </GridView>
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="4"
+                    Padding="0">
+                    <Grid x:Name="BookTable" />
                 </Border>
 
-                <Grid Grid.Row="2" ColumnSpacing="12">
+                <Grid Grid.Row="2" ColumnSpacing="4">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
 
                     <Border
-                        x:Name="ChapterGridHost"
                         Background="{ThemeResource LayerFillColorDefaultBrush}"
-                        CornerRadius="12"
-                        Padding="8"
-                        SizeChanged="OnPickerGridSizeChanged">
-                        <Grid RowSpacing="8">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="*" />
-                            </Grid.RowDefinitions>
-                            <TextBlock FontWeight="SemiBold" Text="Глава" />
-                            <GridView
-                                x:Name="ChapterGrid"
-                                Grid.Row="1"
-                                Padding="0"
-                                HorizontalAlignment="Stretch"
-                                VerticalAlignment="Stretch"
-                                ItemsSource="{Binding Chapters}"
-                                SelectionChanged="OnChapterGridSelectionChanged"
-                                SelectionMode="Single"
-                                SizeChanged="OnPickerGridSizeChanged"
-                                ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                ItemContainerStyle="{StaticResource BibleTileItemStyle}">
-                                <GridView.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <ItemsWrapGrid MaximumRowsOrColumns="10" Orientation="Horizontal" />
-                                    </ItemsPanelTemplate>
-                                </GridView.ItemsPanel>
-                                <GridView.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border
-                                            HorizontalAlignment="Stretch"
-                                            VerticalAlignment="Stretch"
-                                            Background="#8B6B3D"
-                                            CornerRadius="6"
-                                            Padding="2">
-                                            <Viewbox
-                                                Stretch="Uniform"
-                                                StretchDirection="Both"
-                                                HorizontalAlignment="Center"
-                                                VerticalAlignment="Center"
-                                                Margin="8">
-                                                <TextBlock
-                                                    FontSize="32"
-                                                    FontWeight="Bold"
-                                                    Foreground="White"
-                                                    Text="{Binding}" />
-                                            </Viewbox>
-                                        </Border>
-                                    </DataTemplate>
-                                </GridView.ItemTemplate>
-                            </GridView>
-                        </Grid>
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="4"
+                        Padding="0">
+                        <Grid x:Name="ChapterTable" />
                     </Border>
 
                     <Border
-                        x:Name="VerseGridHost"
                         Grid.Column="1"
                         Background="{ThemeResource LayerFillColorDefaultBrush}"
-                        CornerRadius="12"
-                        Padding="8"
-                        SizeChanged="OnPickerGridSizeChanged">
-                        <Grid RowSpacing="8">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="*" />
-                            </Grid.RowDefinitions>
-                            <TextBlock FontWeight="SemiBold" Text="Стих" />
-                            <GridView
-                                x:Name="VerseNumberGrid"
-                                Grid.Row="1"
-                                Padding="0"
-                                HorizontalAlignment="Stretch"
-                                VerticalAlignment="Stretch"
-                                ItemsSource="{Binding Verses}"
-                                SelectedItem="{Binding SelectedVerse, Mode=TwoWay}"
-                                SelectionMode="Single"
-                                SizeChanged="OnPickerGridSizeChanged"
-                                ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                ScrollViewer.VerticalScrollBarVisibility="Auto"
-                                ItemContainerStyle="{StaticResource BibleTileItemStyle}">
-                                <GridView.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <ItemsWrapGrid MaximumRowsOrColumns="8" Orientation="Horizontal" />
-                                    </ItemsPanelTemplate>
-                                </GridView.ItemsPanel>
-                                <GridView.ItemTemplate>
-                                    <DataTemplate>
-                                        <Border
-                                            HorizontalAlignment="Stretch"
-                                            VerticalAlignment="Stretch"
-                                            Background="#C4A574"
-                                            CornerRadius="6"
-                                            Padding="2">
-                                            <Viewbox
-                                                Stretch="Uniform"
-                                                StretchDirection="Both"
-                                                HorizontalAlignment="Center"
-                                                VerticalAlignment="Center"
-                                                Margin="8">
-                                                <TextBlock
-                                                    FontSize="32"
-                                                    FontWeight="Bold"
-                                                    Foreground="#1A1208"
-                                                    Text="{Binding VerseNumber}" />
-                                            </Viewbox>
-                                        </Border>
-                                    </DataTemplate>
-                                </GridView.ItemTemplate>
-                            </GridView>
-                        </Grid>
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="4"
+                        Padding="0">
+                        <Grid x:Name="VerseTable" />
                     </Border>
                 </Grid>
             </Grid>

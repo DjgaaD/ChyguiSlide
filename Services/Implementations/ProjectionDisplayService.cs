@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using ChyguiSlide.Controls;
 using ChyguiSlide.Data.Entities;
 using ChyguiSlide.Services.Abstractions;
 using ChyguiSlide.Services.Models;
@@ -34,6 +35,9 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
 
     private ProjectionWindow? _window;
     private ProjectionDisplayViewModel? _viewModel;
+    private ProjectionStageView? _stage;
+    private ProjectionStageView? _previewStage;
+    private Panel? _previewHost;
     private CameraMediaStreamSource? _cameraMediaStreamSource;
     private NdiVideoRenderer? _ndiVideoRenderer;
     private DispatcherQueueTimer? _topMostTimer;
@@ -46,6 +50,11 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
     private const uint SwpNoactivate = 0x0010;
     private const uint SwpShowwindow = 0x0040;
 
+    private const int DwmwaWindowCornerPreference = 33;
+    private const int DwmwaBorderColor = 34;
+    private const int DwmwaCaptionColor = 35;
+    private const int DwmWcpDoNotRound = 1;
+
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool SetWindowPos(
         IntPtr hWnd,
@@ -55,6 +64,13 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
         int cx,
         int cy,
         uint uFlags);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(
+        IntPtr hwnd,
+        int dwAttribute,
+        ref int pvAttribute,
+        int cbAttribute);
 
     public ProjectionDisplayService(
         IServiceProvider serviceProvider, 
@@ -76,6 +92,7 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
     public bool IsOpen => _window is not null;
     public bool IsBlackout => _viewModel?.IsBlackout ?? false;
     public bool IsNdiModeActive => _viewModel?.IsNdiVideoMode ?? false;
+    public UIElement? ProgramStage => _stage;
 
     public event EventHandler<bool>? ProjectionWindowVisibilityChanged;
     public event EventHandler<bool>? BlackoutStateChanged;
@@ -90,29 +107,120 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
                 return;
             }
 
-            _viewModel ??= _serviceProvider.GetRequiredService<ProjectionDisplayViewModel>();
+            var stage = EnsureStage();
             _window = ActivatorUtilities.CreateInstance<ProjectionWindow>(_serviceProvider);
             _window.Closed += OnWindowClosed;
 
             // Тема и раскладка до Activate — иначе краткий белый кадр пустого окна
-            _viewModel.BeginBackgroundSession();
+            _viewModel!.BeginBackgroundSession();
             await ApplySavedThemeAsync(startNewBackgroundSession: true);
             await ApplyTextLayoutModeAsync();
+
+            AttachStageToWindow(_window, stage);
 
             await TrySetFullScreenOnSelectedDisplayAsync(_window);
             _window.Activate();
 
             // Хоткеи должны работать и когда фокус на окне проекции
-            if (_window.Content is UIElement projectionRoot)
-            {
-                _hotkeyDispatcher.AttachToProjection(projectionRoot);
-            }
+            _hotkeyDispatcher.AttachToProjection(stage);
 
             // Возвращаем фокус оператору на главное окно — управление со стрелок/Esc
             App.MainWindow?.Activate();
 
+            // Обновляем превью при открытии трансляции
+            if (_previewStage is not null && _previewHost is not null)
+            {
+                AttachStageToPreview(_previewStage);
+                _viewModel?.EnsureContentVisible();
+            }
+
             ProjectionWindowVisibilityChanged?.Invoke(this, true);
         });
+    }
+
+    public void BindProgramPreviewHost(Panel? host)
+    {
+        _ = RunOnDispatcherAsync(() =>
+        {
+            _previewHost = host;
+            
+            // Создаем отдельный экземпляр для превью, если его нет
+            if (_previewStage is null && _viewModel is not null)
+            {
+                _previewStage = new ProjectionStageView();
+                _previewStage.BindViewModel(_viewModel, enableTransitionPlayer: false);
+            }
+
+            if (host is not null)
+            {
+                AttachStageToPreview(_previewStage);
+                // Принудительно обновляем превью при привязке
+                _viewModel?.EnsureContentVisible();
+            }
+            else if (_previewStage?.Parent is Panel parent)
+            {
+                parent.Children.Remove(_previewStage);
+            }
+        });
+    }
+
+    private ProjectionStageView EnsureStage()
+    {
+        _viewModel ??= _serviceProvider.GetRequiredService<ProjectionDisplayViewModel>();
+        if (_stage is null)
+        {
+            _stage = new ProjectionStageView();
+            _stage.BindViewModel(_viewModel);
+            EnsureBackgroundMediaSubscription(_viewModel);
+            _ = ApplySavedThemeAsync(startNewBackgroundSession: false);
+            _ = ApplyTextLayoutModeAsync();
+        }
+
+        return _stage;
+    }
+
+    private void AttachStageToWindow(ProjectionWindow window, ProjectionStageView stage)
+    {
+        if (stage.Parent is Panel previewParent)
+        {
+            previewParent.Children.Remove(stage);
+        }
+
+        window.AttachStage(stage);
+    }
+
+    private void AttachStageToPreview(ProjectionStageView stage)
+    {
+        if (_previewHost is null)
+        {
+            return;
+        }
+
+        if (stage.Parent is Panel current && !ReferenceEquals(current, _previewHost))
+        {
+            current.Children.Remove(stage);
+        }
+
+        if (!ReferenceEquals(stage.Parent, _previewHost))
+        {
+            _previewHost.Children.Clear();
+            _previewHost.Children.Add(stage);
+        }
+    }
+
+    private void ReturnStageToPreview()
+    {
+        if (_stage is null)
+        {
+            return;
+        }
+
+        if (_window is not null)
+        {
+            _ = _window.DetachStage();
+        }
+
+        AttachStageToPreview(_stage);
     }
 
     private async Task ApplySavedThemeAsync(bool startNewBackgroundSession = false)
@@ -198,6 +306,9 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
             StopTopMostKeeper();
             _hotkeyDispatcher.DetachProjection();
             window.Closed -= OnWindowClosed;
+
+            ReturnStageToPreview();
+
             if (_viewModel is not null)
             {
                 _viewModel.BackgroundMediaChanged -= OnBackgroundMediaChanged;
@@ -233,11 +344,13 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
 
     public void EnsureContentVisible()
     {
-        _ = RunOnDispatcherAsync(() =>
+        _viewModel?.EnsureContentVisible();
+        
+        // Принудительно обновляем превью при изменении контента
+        if (_previewStage is not null && _previewHost is not null)
         {
-            _viewModel ??= _serviceProvider.GetRequiredService<ProjectionDisplayViewModel>();
-            _viewModel.EnsureContentVisible();
-        });
+            AttachStageToPreview(_previewStage);
+        }
     }
 
     public void ApplyTheme(ThemePreset? theme) => ApplyTheme(theme, startNewBackgroundSession: false);
@@ -266,12 +379,16 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
 
     private async Task SyncThemeBackgroundVideoAsync()
     {
-        if (_window is null || _viewModel is null)
+        if (_viewModel is null)
         {
             return;
         }
 
-        var player = _window.BackgroundVideoPlayerElement;
+        var player = _stage?.BackgroundVideoPlayerElement ?? _window?.BackgroundVideoPlayerElement;
+        if (player is null)
+        {
+            return;
+        }
         var desiredPath = _viewModel.IsBackgroundVideoVisible
             && !string.IsNullOrWhiteSpace(_viewModel.BackgroundVideoPath)
             && File.Exists(_viewModel.BackgroundVideoPath)
@@ -519,6 +636,10 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
             {
                 _window.NdiVideoImageElement.Source = bitmap;
             }
+            else if (_stage?.NdiVideoImageElement != null)
+            {
+                _stage.NdiVideoImageElement.Source = bitmap;
+            }
         });
     }
 
@@ -537,6 +658,10 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
             if (_window?.NdiVideoImageElement != null)
             {
                 _window.NdiVideoImageElement.Source = null;
+            }
+            else if (_stage?.NdiVideoImageElement != null)
+            {
+                _stage.NdiVideoImageElement.Source = null;
             }
 
             System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] NDI video torn down");
@@ -698,7 +823,7 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
                 var mediaStreamSource = _cameraMediaStreamSource.CreateMediaStreamSource();
 
                 // Получаем MediaPlayerElement из окна
-                var videoPlayer = _window.VideoPlayerElement;
+                var videoPlayer = _stage?.VideoPlayerElement ?? _window?.VideoPlayerElement;
                 if (videoPlayer != null)
                 {
                     System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] VideoPlayerElement found, setting source...");
@@ -732,14 +857,7 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
             {
                 System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] MediaStreamSource changed, creating new MediaPlayer");
                 
-                var window = _window;
-                if (window == null)
-                {
-                    System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Window is null, cannot update MediaSource");
-                    return;
-                }
-                
-                var videoPlayer = window.VideoPlayerElement;
+                var videoPlayer = _stage?.VideoPlayerElement ?? _window?.VideoPlayerElement;
                 if (videoPlayer == null)
                 {
                     System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] VideoPlayerElement is null, cannot update MediaSource");
@@ -844,7 +962,7 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
                     _cameraMediaStreamSource.MediaStreamSourceChanged -= OnMediaStreamSourceChanged;
                 }
                 
-                var videoPlayer = _window?.VideoPlayerElement;
+                var videoPlayer = _stage?.VideoPlayerElement ?? _window?.VideoPlayerElement;
                 if (videoPlayer != null)
                 {
                     videoPlayer.Source = null;
@@ -866,6 +984,7 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
         {
             StopTopMostKeeper();
             _hotkeyDispatcher.DetachProjection();
+            ReturnStageToPreview();
             if (_viewModel is not null)
             {
                 _viewModel.BackgroundMediaChanged -= OnBackgroundMediaChanged;
@@ -1177,6 +1296,13 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
     {
         var bounds = displayArea?.OuterBounds ?? DisplayArea.Primary.OuterBounds;
 
+        if (_window is not null)
+        {
+            _window.ExtendsContentIntoTitleBar = true;
+            // Без системного backdrop — иначе по краям/углам просвечивает светлая рамка WinUI.
+            _window.SystemBackdrop = null;
+        }
+
         appWindow.SetPresenter(AppWindowPresenterKind.Overlapped);
         if (appWindow.Presenter is OverlappedPresenter presenter)
         {
@@ -1187,9 +1313,34 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
             presenter.IsMinimizable = false;
         }
 
+        // Windows 11: у overlapped-окон по умолчанию скруглённые углы — отключаем.
+        DisableProjectionWindowChrome(hwnd);
+
         appWindow.MoveAndResize(bounds);
         SetProjectionTopMost(hwnd);
         StartTopMostKeeper(hwnd);
+    }
+
+    private static void DisableProjectionWindowChrome(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        try
+        {
+            var corner = DwmWcpDoNotRound;
+            _ = DwmSetWindowAttribute(hwnd, DwmwaWindowCornerPreference, ref corner, sizeof(int));
+
+            var black = 0;
+            _ = DwmSetWindowAttribute(hwnd, DwmwaBorderColor, ref black, sizeof(int));
+            _ = DwmSetWindowAttribute(hwnd, DwmwaCaptionColor, ref black, sizeof(int));
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"DisableProjectionWindowChrome: {ex.Message}");
+        }
     }
 
     private void StartTopMostKeeper(IntPtr hwnd)

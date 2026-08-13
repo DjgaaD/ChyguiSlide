@@ -27,9 +27,29 @@
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
-        <!-- Левая колонка: быстрый и сохранённые плейлисты -->
+        <!-- Левая колонка: превью, быстрый и сохранённые плейлисты -->
         <StackPanel Grid.Column="0" Margin="16" Spacing="12">
-            <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="Трансляция" />
+            <!-- Предпросмотр: зеркало экрана проекции -->
+            <Grid Height="200">
+                <Viewbox
+                    Stretch="Uniform"
+                    HorizontalAlignment="Stretch"
+                    VerticalAlignment="Stretch">
+                    <Grid
+                        Width="1920"
+                        Height="1080"
+                        Background="Black">
+                        <Grid x:Name="PreviewStageHost" />
+                    </Grid>
+                </Viewbox>
+                <TextBlock
+                    x:Name="PreviewIdleHint"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="Нет сигнала"
+                    Visibility="Collapsed" />
+            </Grid>
 
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <Button
@@ -160,12 +180,8 @@
             </Border>
         </StackPanel>
 
-        <!-- Правая колонка: управление трансляцией и предпросмотр -->
+        <!-- Правая колонка: управление трансляцией -->
         <Grid Grid.Column="1" Margin="8,16,16,16">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="420" />
-            </Grid.ColumnDefinitions>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
@@ -173,7 +189,7 @@
             </Grid.RowDefinitions>
 
             <!-- Заголовок -->
-            <StackPanel Grid.Row="0" Grid.ColumnSpan="2" Padding="16,0,16,12" Spacing="8">
+            <StackPanel Grid.Row="0" Padding="16,0,16,12" Spacing="8">
                 <TextBlock
                     FontSize="24"
                     FontWeight="SemiBold"
@@ -185,7 +201,7 @@
             </StackPanel>
 
             <!-- Секции -->
-            <Grid Grid.Row="1" Grid.Column="0" Padding="16,0,8,0" RowSpacing="8">
+            <Grid Grid.Row="1" Padding="16,0,8,0" RowSpacing="8">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
@@ -201,45 +217,8 @@
                     ItemTemplate="{StaticResource SelectableCardCurrentTemplate}" />
             </Grid>
 
-            <!-- Предпросмотр -->
-            <Border
-                Grid.Row="1"
-                Grid.Column="1"
-                Margin="8,0,0,0"
-                Background="{ThemeResource LayerFillColorDefaultBrush}"
-                BorderBrush="{ThemeResource StrokeColorSecondaryBrush}"
-                BorderThickness="1"
-                CornerRadius="12"
-                Padding="16">
-                <ScrollViewer
-                    HorizontalScrollBarVisibility="Disabled"
-                    VerticalScrollBarVisibility="Auto">
-                    <StackPanel Spacing="12">
-                        <TextBlock
-                            FontSize="20"
-                            FontWeight="SemiBold"
-                            Text="{Binding CurrentState.SongTitle, FallbackValue='—'}"
-                            TextAlignment="Center"
-                            TextWrapping="WrapWholeWords" />
-                        <ItemsControl ItemsSource="{Binding VisibleLines}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <TextBlock
-                                        Margin="0,4"
-                                        FontSize="16"
-                                        HorizontalAlignment="Stretch"
-                                        Text="{Binding}"
-                                        TextAlignment="Center"
-                                        TextWrapping="WrapWholeWords" />
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </StackPanel>
-                </ScrollViewer>
-            </Border>
-
             <!-- Панель управления -->
-            <Grid Grid.Row="2" Grid.ColumnSpan="2" Padding="16" Background="{ThemeResource LayerFillColorDefaultBrush}">
+            <Grid Grid.Row="2" Padding="16" Background="{ThemeResource LayerFillColorDefaultBrush}">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />

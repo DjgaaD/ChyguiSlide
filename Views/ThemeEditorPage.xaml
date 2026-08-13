@@ -24,30 +24,31 @@
         <x:String x:Key="John316PreviewText">Ибо так возлюбил Бог мир, что отдал Сына Своего Единородного, дабы всякий верующий в Него, не погиб, но имел жизнь вечную.</x:String>
     </Page.Resources>
 
-    <ScrollViewer
-        Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
-        HorizontalScrollBarVisibility="Disabled"
-        VerticalScrollBarVisibility="Auto">
-        <Grid ColumnSpacing="16" RowSpacing="12" Padding="4">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-            <StackPanel Grid.Column="0" Spacing="12">
-                <TextBox Header="Название" Text="{Binding PresetName, Mode=TwoWay}" />
-                <TextBox
-                    Header="Шрифт"
-                    PlaceholderText="Segoe UI"
-                    Text="{Binding FontFamily, Mode=TwoWay}" />
-                <ToggleSwitch
-                    Header="Жирный шрифт"
-                    OffContent="Обычный"
-                    OnContent="Жирный"
-                    IsOn="{Binding IsBold, Mode=TwoWay}" />
-                <StackPanel Spacing="8">
-                    <TextBlock Text="Выравнивание" Style="{ThemeResource CaptionTextBlockStyle}" />
-                    <StackPanel Orientation="Horizontal" Spacing="4">
-                        <Button
+    <Grid>
+        <ScrollViewer
+            Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
+            HorizontalScrollBarVisibility="Disabled"
+            VerticalScrollBarVisibility="Auto">
+            <Grid ColumnSpacing="16" RowSpacing="12" Padding="4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Spacing="12">
+                    <TextBox Header="Название" Text="{Binding PresetName, Mode=TwoWay}" />
+                    <TextBox
+                        Header="Шрифт"
+                        PlaceholderText="Segoe UI"
+                        Text="{Binding FontFamily, Mode=TwoWay}" />
+                    <ToggleSwitch
+                        Header="Жирный шрифт"
+                        OffContent="Обычный"
+                        OnContent="Жирный"
+                        IsOn="{Binding IsBold, Mode=TwoWay}" />
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Выравнивание" Style="{ThemeResource CaptionTextBlockStyle}" />
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <Button
                             Width="40"
                             Height="40"
                             Padding="0"
@@ -169,7 +170,9 @@
                                 BorderThickness="1"
                                 CornerRadius="4"
                                 Click="OnPickBackgroundColorClicked"
-                                ToolTipService.ToolTip="Палитра" />
+                                ToolTipService.ToolTip="Палитра">
+                                <icons:LucideIcon Kind="palette" Size="16" Foreground="White" />
+                            </Button>
                         </Grid>
                         <Border
                             Height="72"
@@ -374,7 +377,9 @@
                         BorderThickness="1"
                         CornerRadius="4"
                         Click="OnPickPrimaryColorClicked"
-                        ToolTipService.ToolTip="Палитра" />
+                        ToolTipService.ToolTip="Палитра">
+                        <icons:LucideIcon Kind="palette" Size="16" Foreground="#88000000" />
+                    </Button>
                 </Grid>
                 <ToggleSwitch Header="Обводка текста" IsOn="{Binding TextOutlineEnabled, Mode=TwoWay}" />
                 <NumberBox
@@ -408,7 +413,9 @@
                         CornerRadius="4"
                         IsEnabled="{Binding TextOutlineEnabled}"
                         Click="OnPickOutlineColorClicked"
-                        ToolTipService.ToolTip="Палитра" />
+                        ToolTipService.ToolTip="Палитра">
+                        <icons:LucideIcon Kind="palette" Size="16" Foreground="White" />
+                    </Button>
                 </Grid>
                 <StackPanel Spacing="4">
                     <TextBlock Text="Прозрачность контура" />
@@ -446,5 +453,53 @@
                 </Border>
             </StackPanel>
         </Grid>
-    </ScrollViewer>
+        </ScrollViewer>
+
+        <!-- Палитра внутри страницы: второй ContentDialog / Flyout поверх редактора в WinUI не открываются -->
+        <Grid
+            x:Name="ColorPickerOverlay"
+            Visibility="Collapsed"
+            Background="#99000000"
+            Canvas.ZIndex="100">
+            <Border
+                MaxWidth="360"
+                MinWidth="300"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="12"
+                Padding="20">
+                <StackPanel Spacing="12">
+                    <TextBlock
+                        x:Name="ColorPickerTitle"
+                        Style="{StaticResource SubtitleTextBlockStyle}"
+                        Text="Цвет" />
+                    <ColorPicker
+                        x:Name="InlineColorPicker"
+                        ColorSpectrumShape="Box"
+                        IsAlphaEnabled="False"
+                        IsColorChannelTextInputVisible="True"
+                        IsHexInputVisible="True"
+                        Width="312"
+                        MinHeight="320" />
+                    <StackPanel
+                        Orientation="Horizontal"
+                        Spacing="8"
+                        HorizontalAlignment="Right">
+                        <Button
+                            Content="Отмена"
+                            MinWidth="88"
+                            Click="OnColorPickerCancelClicked" />
+                        <Button
+                            Content="OK"
+                            MinWidth="88"
+                            Style="{StaticResource AccentButtonStyle}"
+                            Click="OnColorPickerOkClicked" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
 </Page>

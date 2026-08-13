@@ -1,19 +1,18 @@
 using System;
+using ChyguiSlide.Services;
 using ChyguiSlide.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Windows.System;
-using Windows.UI.Core;
-
-using ChyguiSlide.Services;
 
 namespace ChyguiSlide.Views;
 
 public sealed partial class ThemeEditorPage : Page
 {
+    private Action<global::Windows.UI.Color>? _pendingColorApply;
+
     public ThemePresetEditorViewModel ViewModel { get; }
 
     public ThemeEditorPage()
@@ -24,14 +23,40 @@ public sealed partial class ThemeEditorPage : Page
         Loaded += (_, _) => AppUiThemeApplier.ApplyToElement(this);
     }
 
-    private async void OnPickPrimaryColorClicked(object sender, RoutedEventArgs e)
-        => await PickColorAsync(c => ViewModel.PrimaryPickerColor = c, ViewModel.PrimaryPickerColor);
+    private void OnPickPrimaryColorClicked(object sender, RoutedEventArgs e)
+        => OpenColorPicker("Цвет текста", ViewModel.PrimaryPickerColor, c => ViewModel.PrimaryPickerColor = c);
 
-    private async void OnPickBackgroundColorClicked(object sender, RoutedEventArgs e)
-        => await PickColorAsync(c => ViewModel.BackgroundPickerColor = c, ViewModel.BackgroundPickerColor);
+    private void OnPickBackgroundColorClicked(object sender, RoutedEventArgs e)
+        => OpenColorPicker("Цвет фона", ViewModel.BackgroundPickerColor, c => ViewModel.BackgroundPickerColor = c);
 
-    private async void OnPickOutlineColorClicked(object sender, RoutedEventArgs e)
-        => await PickColorAsync(c => ViewModel.TextOutlinePickerColor = c, ViewModel.TextOutlinePickerColor);
+    private void OnPickOutlineColorClicked(object sender, RoutedEventArgs e)
+        => OpenColorPicker("Цвет обводки", ViewModel.TextOutlinePickerColor, c => ViewModel.TextOutlinePickerColor = c);
+
+    private void OpenColorPicker(
+        string title,
+        global::Windows.UI.Color initial,
+        Action<global::Windows.UI.Color> apply)
+    {
+        _pendingColorApply = apply;
+        ColorPickerTitle.Text = title;
+        InlineColorPicker.Color = initial;
+        ColorPickerOverlay.Visibility = Visibility.Visible;
+    }
+
+    private void OnColorPickerOkClicked(object sender, RoutedEventArgs e)
+    {
+        _pendingColorApply?.Invoke(InlineColorPicker.Color);
+        CloseColorPicker();
+    }
+
+    private void OnColorPickerCancelClicked(object sender, RoutedEventArgs e)
+        => CloseColorPicker();
+
+    private void CloseColorPicker()
+    {
+        ColorPickerOverlay.Visibility = Visibility.Collapsed;
+        _pendingColorApply = null;
+    }
 
     private void OnWallpaperPreviewTapped(object sender, TappedRoutedEventArgs e)
     {
@@ -104,34 +129,5 @@ public sealed partial class ThemeEditorPage : Page
         item.DisplayName = box.Text ?? string.Empty;
         item.EndRename();
         await ViewModel.CommitWallpaperDisplayNameAsync(item);
-    }
-
-    private async System.Threading.Tasks.Task PickColorAsync(
-        Action<global::Windows.UI.Color> apply,
-        global::Windows.UI.Color initial)
-    {
-        var picker = new ColorPicker
-        {
-            ColorSpectrumShape = ColorSpectrumShape.Box,
-            IsAlphaEnabled = false,
-            IsColorChannelTextInputVisible = true,
-            IsHexInputVisible = true,
-            Color = initial
-        };
-
-        var dialog = new ContentDialog
-        {
-            Title = "Цвет",
-            Content = picker,
-            PrimaryButtonText = "OK",
-            CloseButtonText = "Отмена",
-            DefaultButton = ContentDialogButton.Primary,
-            XamlRoot = XamlRoot
-        };
-
-        if (await ContentDialogTheme.ShowAsync(dialog) == ContentDialogResult.Primary)
-        {
-            apply(picker.Color);
-        }
     }
 }

@@ -48,6 +48,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         {
             new SettingsNavItem("Трансляция", "radio", SettingsSection.Projection),
             new SettingsNavItem("Камера", "cctv", SettingsSection.Camera),
+            new SettingsNavItem("Интерфейс", "monitor", SettingsSection.Interface),
             new SettingsNavItem("Стили", "palette", SettingsSection.Themes),
             new SettingsNavItem("Горячие клавиши", "keyboard", SettingsSection.Hotkeys),
             new SettingsNavItem("Резервные копии", "cloud-upload", SettingsSection.Backup),
@@ -62,6 +63,9 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
 
     [ObservableProperty]
     private bool isCameraSectionVisible;
+
+    [ObservableProperty]
+    private bool isInterfaceSectionVisible;
 
     [ObservableProperty]
     private bool isThemesSectionVisible;
@@ -202,12 +206,111 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
     public ObservableCollection<ThemeWallpaperItem> EditingPoolWallpapers { get; } = new();
     public ObservableCollection<AppUiThemeOptionItem> AppUiThemeOptions { get; } = new();
     public ObservableCollection<BiblePickerLayoutOptionItem> BiblePickerLayoutOptions { get; } = new();
+    public ObservableCollection<NavigationPaneOptionItem> NavigationPaneOptions { get; } = new();
 
     [ObservableProperty]
     private AppUiThemeOptionItem? selectedAppUiTheme;
 
     [ObservableProperty]
     private BiblePickerLayoutOptionItem? selectedBiblePickerLayout;
+
+    [ObservableProperty]
+    private NavigationPaneOptionItem? selectedNavigationPane;
+
+    public bool IsAppUiThemeSystem
+    {
+        get => SelectedAppUiTheme?.Mode == AppUiThemeMode.System;
+        set
+        {
+            if (value)
+            {
+                SelectedAppUiTheme = AppUiThemeOptions.FirstOrDefault(o => o.Mode == AppUiThemeMode.System);
+            }
+        }
+    }
+
+    public bool IsAppUiThemeLight
+    {
+        get => SelectedAppUiTheme?.Mode == AppUiThemeMode.Light;
+        set
+        {
+            if (value)
+            {
+                SelectedAppUiTheme = AppUiThemeOptions.FirstOrDefault(o => o.Mode == AppUiThemeMode.Light);
+            }
+        }
+    }
+
+    public bool IsAppUiThemeDark
+    {
+        get => SelectedAppUiTheme?.Mode == AppUiThemeMode.Dark;
+        set
+        {
+            if (value)
+            {
+                SelectedAppUiTheme = AppUiThemeOptions.FirstOrDefault(o => o.Mode == AppUiThemeMode.Dark);
+            }
+        }
+    }
+
+    public bool IsNavigationPaneCollapsed
+    {
+        get => SelectedNavigationPane?.Mode == NavigationPaneMode.Collapsed;
+        set
+        {
+            if (value)
+            {
+                SelectedNavigationPane = NavigationPaneOptions.FirstOrDefault(o => o.Mode == NavigationPaneMode.Collapsed);
+            }
+        }
+    }
+
+    public bool IsNavigationPaneExpanded
+    {
+        get => SelectedNavigationPane?.Mode == NavigationPaneMode.Expanded;
+        set
+        {
+            if (value)
+            {
+                SelectedNavigationPane = NavigationPaneOptions.FirstOrDefault(o => o.Mode == NavigationPaneMode.Expanded);
+            }
+        }
+    }
+
+    public bool IsBiblePickerLists
+    {
+        get => SelectedBiblePickerLayout?.Mode == BiblePickerLayoutMode.Lists;
+        set
+        {
+            if (value)
+            {
+                SelectedBiblePickerLayout = BiblePickerLayoutOptions.FirstOrDefault(o => o.Mode == BiblePickerLayoutMode.Lists);
+            }
+        }
+    }
+
+    public bool IsBiblePickerGrid
+    {
+        get => SelectedBiblePickerLayout?.Mode == BiblePickerLayoutMode.Grid;
+        set
+        {
+            if (value)
+            {
+                SelectedBiblePickerLayout = BiblePickerLayoutOptions.FirstOrDefault(o => o.Mode == BiblePickerLayoutMode.Grid);
+            }
+        }
+    }
+
+    private void NotifyInterfaceSegmentProperties()
+    {
+        OnPropertyChanged(nameof(IsAppUiThemeSystem));
+        OnPropertyChanged(nameof(IsAppUiThemeLight));
+        OnPropertyChanged(nameof(IsAppUiThemeDark));
+        OnPropertyChanged(nameof(IsNavigationPaneCollapsed));
+        OnPropertyChanged(nameof(IsNavigationPaneExpanded));
+        OnPropertyChanged(nameof(IsBiblePickerLists));
+        OnPropertyChanged(nameof(IsBiblePickerGrid));
+    }
 
     private Guid? _selectedSharedWallpaperId;
     private Guid? _selectedSongWallpaperId;
@@ -301,6 +404,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         BuildWallpaperPoolOptions();
         BuildAppUiThemeOptions();
         BuildBiblePickerLayoutOptions();
+        BuildNavigationPaneOptions();
         SelectedSettingsSection = SettingsSections[0];
 
         PropertyChanged += (_, args) =>
@@ -468,6 +572,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
 
         await LoadAppUiThemeAsync(cancellationToken);
         await LoadBiblePickerLayoutAsync(cancellationToken);
+        await LoadNavigationPaneModeAsync(cancellationToken);
         await LoadKeepProjectionBackgroundAsync();
 
         if (Presets.Count > 0)
@@ -488,6 +593,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         var section = value?.Section ?? SettingsSection.Projection;
         IsProjectionSectionVisible = section == SettingsSection.Projection;
         IsCameraSectionVisible = section == SettingsSection.Camera;
+        IsInterfaceSectionVisible = section == SettingsSection.Interface;
         IsThemesSectionVisible = section == SettingsSection.Themes;
         IsHotkeysSectionVisible = section == SettingsSection.Hotkeys;
         IsBackupSectionVisible = section == SettingsSection.Backup;
@@ -750,6 +856,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
 
     partial void OnSelectedAppUiThemeChanged(AppUiThemeOptionItem? value)
     {
+        NotifyInterfaceSegmentProperties();
         if (_suppressAppUiThemePersist || value is null)
         {
             return;
@@ -780,8 +887,8 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
             "Книги, главы и стихи в колонках — как раньше."));
         BiblePickerLayoutOptions.Add(new BiblePickerLayoutOptionItem(
             BiblePickerLayoutMode.Grid,
-            "Плитки",
-            "Цветная сетка книг, глав и номеров стихов."));
+            "Таблица",
+            "Книги, главы и стихи — таблица ячеек на всю область."));
 
         _suppressBiblePickerLayoutPersist = true;
         SelectedBiblePickerLayout = BiblePickerLayoutOptions.FirstOrDefault();
@@ -811,6 +918,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
 
     partial void OnSelectedBiblePickerLayoutChanged(BiblePickerLayoutOptionItem? value)
     {
+        NotifyInterfaceSegmentProperties();
         if (_suppressBiblePickerLayoutPersist || value is null)
         {
             return;
@@ -828,6 +936,70 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"SaveBiblePickerLayoutAsync: {ex.Message}");
+        }
+    }
+
+    private void BuildNavigationPaneOptions()
+    {
+        NavigationPaneOptions.Clear();
+        NavigationPaneOptions.Add(new NavigationPaneOptionItem(
+            NavigationPaneMode.Collapsed,
+            "Свёрнуто",
+            "Только иконки — больше места под контент."));
+        NavigationPaneOptions.Add(new NavigationPaneOptionItem(
+            NavigationPaneMode.Expanded,
+            "Развёрнуто",
+            "Иконки и подписи пунктов меню."));
+
+        _suppressNavigationPanePersist = true;
+        SelectedNavigationPane = NavigationPaneOptions.FirstOrDefault();
+        _suppressNavigationPanePersist = false;
+    }
+
+    private bool _suppressNavigationPanePersist;
+
+    private async Task LoadNavigationPaneModeAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _suppressNavigationPanePersist = true;
+            var mode = await _displaySettingsService.GetNavigationPaneModeAsync();
+            SelectedNavigationPane = NavigationPaneOptions.FirstOrDefault(o => o.Mode == mode)
+                ?? NavigationPaneOptions.FirstOrDefault();
+            ChyguiSlide.Views.MainPage.TryApplyNavigationPaneMode(
+                SelectedNavigationPane?.Mode ?? NavigationPaneMode.Collapsed);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"LoadNavigationPaneModeAsync: {ex.Message}");
+        }
+        finally
+        {
+            _suppressNavigationPanePersist = false;
+        }
+    }
+
+    partial void OnSelectedNavigationPaneChanged(NavigationPaneOptionItem? value)
+    {
+        NotifyInterfaceSegmentProperties();
+        if (_suppressNavigationPanePersist || value is null)
+        {
+            return;
+        }
+
+        ChyguiSlide.Views.MainPage.TryApplyNavigationPaneMode(value.Mode);
+        _ = SaveNavigationPaneModeAsync(value.Mode);
+    }
+
+    private async Task SaveNavigationPaneModeAsync(NavigationPaneMode mode)
+    {
+        try
+        {
+            await _displaySettingsService.SetNavigationPaneModeAsync(mode);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"SaveNavigationPaneModeAsync: {ex.Message}");
         }
     }
 
@@ -1047,6 +1219,20 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         finally
         {
             _suppressBibleReferencePersist = false;
+        }
+
+        // Подтянуть флаг на окно проекции (иначе ShowBibleReference там остаётся false до ручного переключения).
+        try
+        {
+            var projectionVm = App.AppHost.Services.GetService(typeof(ProjectionDisplayViewModel)) as ProjectionDisplayViewModel;
+            if (projectionVm is not null)
+            {
+                await projectionVm.RefreshBibleReferenceSettingsAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"LoadBibleReferenceSettingsAsync → projection: {ex.Message}");
         }
     }
 
