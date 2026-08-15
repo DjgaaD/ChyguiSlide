@@ -62,8 +62,17 @@ namespace ChyguiSlide
             try
             {
                 LogToFile("Инициализация AppHost...");
-                AppHost.StartAsync().GetAwaiter().GetResult();
+                await AppHost.StartAsync().ConfigureAwait(false);
                 LogToFile("AppHost инициализирован успешно");
+                try
+                {
+                    // Создаём начальную запись в interaction.log, чтобы файл гарантированно существовал
+                    ChyguiSlide.Data.InteractionLogger.Log("Interaction logging initialized");
+                }
+                catch
+                {
+                    // Ничего — если логгер не доступен, продолжаем запуск
+                }
 
                 // Ранний старт глобальных хоткеев (Esc/стрелки при фокусе на проекторе)
                 _ = AppHost.Services.GetRequiredService<HotkeyDispatcher>();
@@ -81,9 +90,24 @@ namespace ChyguiSlide
                         ? "База данных создана впервые"
                         : "База данных уже существует");
                     
-                    LogToFile("Применение миграций...");
-                    ApplyLightweightMigrations(db);
-                    LogToFile("Миграции применены");
+                        LogToFile("Применение миграций...");
+                        // Простая блокировка на уровне файла, чтобы избежать гонок при одновременном запуске приложений
+                        var lockPath = ChyguiSlide.Data.AppPaths.GetLockPath("migrations");
+                        try
+                        {
+                            using (var fs = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
+                            {
+                                ApplyLightweightMigrations(db);
+                            }
+                        }
+                        catch (IOException)
+                        {
+                            // Если не удалось получить эксклюзивный доступ — ждём и повторяем одну попытку
+                            await Task.Delay(500);
+                            ApplyLightweightMigrations(db);
+                        }
+
+                        LogToFile("Миграции применены");
 
                     // Сид только при первом создании БД — не при каждом запуске
                     if (databaseCreated)
@@ -236,7 +260,7 @@ namespace ChyguiSlide
 
                 _mainWindowMinSizeDelegate = MainWindowMinSizeWndProc;
                 _mainWindowMinSizeProc = Marshal.GetFunctionPointerForDelegate(_mainWindowMinSizeDelegate);
-                _mainWindowOriginalWndProc = SetWindowLongPtr(hwnd, GwlpWndProc, _mainWindowMinSizeProc);
+                _mainWindowOriginalWndProc = SetWindowLongPtrCompat(hwnd, GwlpWndProc, _mainWindowMinSizeProc);
             }
             catch (Exception ex)
             {
@@ -280,6 +304,19 @@ namespace ChyguiSlide
 
         [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
         private static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongW", SetLastError = true)]
+        private static extern IntPtr SetWindowLong32(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+        private static IntPtr SetWindowLongPtrCompat(IntPtr hWnd, int nIndex, IntPtr dwNewLong)
+        {
+            if (IntPtr.Size == 8)
+            {
+                return SetWindowLongPtr(hWnd, nIndex, dwNewLong);
+            }
+
+            return SetWindowLong32(hWnd, nIndex, dwNewLong);
+        }
 
         [DllImport("user32.dll", EntryPoint = "CallWindowProcW")]
         private static extern IntPtr CallWindowProc(IntPtr lpPrevWndFunc, IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
@@ -350,7 +387,7 @@ namespace ChyguiSlide
         {
             try
             {
-                var logPath = Path.Combine(AppContext.BaseDirectory, "error.log");
+                var logPath = ChyguiSlide.Data.AppPaths.GetLogPath("error.log");
                 var lines = new List<string>
                 {
                     $"[{DateTimeOffset.Now:O}] {source} exception",
@@ -389,7 +426,7 @@ namespace ChyguiSlide
         {
             try
             {
-                var logPath = Path.Combine(AppContext.BaseDirectory, "startup.log");
+                var logPath = ChyguiSlide.Data.AppPaths.GetLogPath("startup.log");
                 var logLine = $"[{DateTimeOffset.Now:HH:mm:ss.fff}] {message}";
                 File.AppendAllText(logPath, logLine + Environment.NewLine);
                 

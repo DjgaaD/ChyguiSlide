@@ -65,6 +65,7 @@ public class ProjectionStateService : IProjectionStateService
             _sections = nextSections;
             _sectionCaptions = nextCaptions;
             _linesOverride = null;
+
             PublishState();
         }
     }

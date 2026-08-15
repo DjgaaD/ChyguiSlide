@@ -102,6 +102,8 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
     {
         await RunOnDispatcherAsync(async () =>
         {
+            ChyguiSlide.Data.InteractionLogger.Log($"ShowAsync: enter. WindowExists={_window is not null}, PreviewStage={( _previewStage is null ? "null" : _previewStage.GetHashCode().ToString())}, PreviewHost={( _previewHost is null ? "null" : _previewHost.GetHashCode().ToString())}");
+            System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] ShowAsync enter. PreviewHost={( _previewHost is null ? "null" : _previewHost.GetHashCode().ToString())}");
             if (_window is not null)
             {
                 return;
@@ -142,17 +144,25 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
     {
         _ = RunOnDispatcherAsync(() =>
         {
+            ChyguiSlide.Data.InteractionLogger.Log($"BindProgramPreviewHost: called. host={(host is null ? "null" : host.GetHashCode().ToString())}, existingPreviewStage={( _previewStage is null ? "null" : _previewStage.GetHashCode().ToString())}, existingPreviewHost={( _previewHost is null ? "null" : _previewHost.GetHashCode().ToString())}");
+            System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] BindProgramPreviewHost called. host={(host is null ? "null" : host.GetHashCode().ToString())}");
             _previewHost = host;
             
-            // Создаем отдельный экземпляр для превью, если его нет
-            if (_previewStage is null && _viewModel is not null)
+            // Создаем отдельный экземпляр для превью, если его нет.
+            // Если ViewModel ещё не создана, создаём её здесь, чтобы превью всегда могло быть инициализировано при привязке хоста.
+            if (_previewStage is null)
             {
+                _viewModel ??= _serviceProvider.GetService<ProjectionDisplayViewModel>() ?? _serviceProvider.GetRequiredService<ProjectionDisplayViewModel>();
+                System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Creating preview stage instance");
+                ChyguiSlide.Data.InteractionLogger.Log("Creating preview stage instance");
                 _previewStage = new ProjectionStageView();
                 _previewStage.BindViewModel(_viewModel, enableTransitionPlayer: false);
             }
 
             if (host is not null)
             {
+                System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Attaching preview stage to host");
+                ChyguiSlide.Data.InteractionLogger.Log("Attaching preview stage to host");
                 AttachStageToPreview(_previewStage);
                 // Принудительно обновляем превью при привязке
                 _viewModel?.EnsureContentVisible();
@@ -195,6 +205,9 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
         {
             return;
         }
+
+        System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] AttachStageToPreview: stage={(stage is null ? "null" : stage.GetHashCode().ToString())}, previewHost={_previewHost.GetHashCode()}");
+        ChyguiSlide.Data.InteractionLogger.Log($"AttachStageToPreview: stage={(stage is null ? "null" : stage.GetHashCode().ToString())}, previewHost={_previewHost.GetHashCode()}");
 
         if (stage.Parent is Panel current && !ReferenceEquals(current, _previewHost))
         {
@@ -384,37 +397,53 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
             return;
         }
 
-        var player = _stage?.BackgroundVideoPlayerElement ?? _window?.BackgroundVideoPlayerElement;
-        if (player is null)
+        var players = new MediaPlayerElement?[]
         {
-            return;
-        }
+            _previewStage?.BackgroundVideoPlayerElement,
+            _stage?.BackgroundVideoPlayerElement,
+            _window?.BackgroundVideoPlayerElement
+        };
+
         var desiredPath = _viewModel.IsBackgroundVideoVisible
             && !string.IsNullOrWhiteSpace(_viewModel.BackgroundVideoPath)
             && File.Exists(_viewModel.BackgroundVideoPath)
             ? _viewModel.BackgroundVideoPath
             : null;
 
-        // Уже играет тот же файл — не сбрасываем Source (иначе мерцание при повторном ApplyTheme)
-        if (string.Equals(_syncedBackgroundVideoPath, desiredPath, StringComparison.OrdinalIgnoreCase)
-            && (desiredPath is null || player.Source is not null))
+        // Если путь не изменился и у хотя бы одного плеера уже есть Source, просто обновляем флаги.
+        if (string.Equals(_syncedBackgroundVideoPath, desiredPath, StringComparison.OrdinalIgnoreCase))
         {
-            if (desiredPath is not null && player.MediaPlayer is not null)
+            if (desiredPath is not null)
             {
-                player.MediaPlayer.IsLoopingEnabled = _viewModel.LoopBackgroundMedia;
+                foreach (var p in players)
+                {
+                    if (p?.MediaPlayer is not null)
+                    {
+                        p.MediaPlayer.IsLoopingEnabled = _viewModel.LoopBackgroundMedia;
+                    }
+                }
             }
 
             return;
         }
 
-        try
+        // Очищаем предыдущие источники у всех плееров
+        foreach (var p in players)
         {
-            player.Source = null;
-            player.MediaPlayer?.Pause();
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] Clear background video: {ex.Message}");
+            if (p is null)
+            {
+                continue;
+            }
+
+            try
+            {
+                p.Source = null;
+                p.MediaPlayer?.Pause();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] Clear background video (preview/stage/window): {ex.Message}");
+            }
         }
 
         _syncedBackgroundVideoPath = null;
@@ -426,23 +455,38 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
 
         try
         {
-            var mediaPlayer = player.MediaPlayer ?? new MediaPlayer();
-            mediaPlayer.IsLoopingEnabled = _viewModel.LoopBackgroundMedia;
-            mediaPlayer.IsMuted = true;
-            mediaPlayer.AutoPlay = true;
-            mediaPlayer.CommandManager.IsEnabled = false;
-            if (player.MediaPlayer is null)
+            // Устанавливаем источник для каждого плеера отдельно (независимые MediaPlayer)
+            foreach (var p in players)
             {
-                player.SetMediaPlayer(mediaPlayer);
+                if (p is null)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    var mediaPlayer = p.MediaPlayer ?? new MediaPlayer();
+                    mediaPlayer.IsLoopingEnabled = _viewModel.LoopBackgroundMedia;
+                    mediaPlayer.IsMuted = true;
+                    mediaPlayer.AutoPlay = true;
+                    mediaPlayer.CommandManager.IsEnabled = false;
+                    if (p.MediaPlayer is null)
+                    {
+                        p.SetMediaPlayer(mediaPlayer);
+                    }
+
+                    var storageFile = await global::Windows.Storage.StorageFile.GetFileFromPathAsync(desiredPath);
+                    p.Source = MediaSource.CreateFromStorageFile(storageFile);
+                    mediaPlayer.Play();
+                }
+                catch (Exception exInner)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] Background video error for a player: {exInner.Message}");
+                }
             }
 
-            // Локальные MP4 надёжнее через StorageFile, чем через file:// URI
-            var storageFile = await global::Windows.Storage.StorageFile
-                .GetFileFromPathAsync(desiredPath);
-            player.Source = MediaSource.CreateFromStorageFile(storageFile);
-            mediaPlayer.Play();
             _syncedBackgroundVideoPath = desiredPath;
-            System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] Background video: {desiredPath}");
+            System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] Background video set for players: {desiredPath}");
         }
         catch (Exception ex)
         {
@@ -632,13 +676,27 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
     {
         _dispatcher.TryEnqueue(() =>
         {
-            if (_window?.NdiVideoImageElement != null)
+            // Обновляем NDI изображение для окна, сцены и превью (если есть)
+            try
             {
-                _window.NdiVideoImageElement.Source = bitmap;
+                if (_window?.NdiVideoImageElement != null)
+                {
+                    _window.NdiVideoImageElement.Source = bitmap;
+                }
+
+                if (_stage?.NdiVideoImageElement != null)
+                {
+                    _stage.NdiVideoImageElement.Source = bitmap;
+                }
+
+                if (_previewStage?.NdiVideoImageElement != null)
+                {
+                    _previewStage.NdiVideoImageElement.Source = bitmap;
+                }
             }
-            else if (_stage?.NdiVideoImageElement != null)
+            catch (Exception ex)
             {
-                _stage.NdiVideoImageElement.Source = bitmap;
+                System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] Error updating NDI bitmap for preview/stage/window: {ex.Message}");
             }
         });
     }
@@ -812,34 +870,89 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
 
             try
             {
-                System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Setting up video stream...");
-                
+                System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Setting up video stream (separate players for main and preview)...");
+                ChyguiSlide.Data.InteractionLogger.Log("SetupVideoStreamAsync: start - creating separate MediaPlayers/MediaSources for main and preview");
+
                 // Создаем MediaStreamSource для передачи H.264/H.265 данных в MediaPlayer
                 _cameraMediaStreamSource = new CameraMediaStreamSource(_cameraStreamService);
-                
+
                 // Подписываемся на событие изменения MediaStreamSource (например, при смене кодека)
                 _cameraMediaStreamSource.MediaStreamSourceChanged += OnMediaStreamSourceChanged;
-                
-                var mediaStreamSource = _cameraMediaStreamSource.CreateMediaStreamSource();
 
-                // Получаем MediaPlayerElement из окна
-                var videoPlayer = _stage?.VideoPlayerElement ?? _window?.VideoPlayerElement;
-                if (videoPlayer != null)
+                // Получаем MediaPlayerElement для основного stage/okna и для превью
+                var mainVideoPlayer = _stage?.VideoPlayerElement ?? _window?.VideoPlayerElement;
+                var previewVideoPlayer = _previewStage?.VideoPlayerElement;
+
+                if (mainVideoPlayer is null && previewVideoPlayer is null)
                 {
-                    System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] VideoPlayerElement found, setting source...");
-                    
-                    // Создаем MediaSource из MediaStreamSource
-                    var mediaSource = MediaSource.CreateFromMediaStreamSource(mediaStreamSource);
-                    videoPlayer.Source = mediaSource;
-                    
-                    System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] MediaSource set, starting playback...");
-                    videoPlayer.MediaPlayer?.Play();
-                    
-                    System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Video stream setup complete");
+                    System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] No VideoPlayerElement available for stage/window/preview");
+                    ChyguiSlide.Data.InteractionLogger.Log("SetupVideoStreamAsync: no VideoPlayerElement available");
+                    return;
                 }
-                else
+
+                try
                 {
-                    System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] VideoPlayerElement is null!");
+                    // Создаем отдельные MediaStreamSource/MediaSource для основного и превью,
+                    // чтобы не пытаться подключать один и тот же источник к двум плеерам.
+                    var mediaStreamSourceMain = _cameraMediaStreamSource.CreateMediaStreamSource();
+                    var mediaStreamSourcePreview = _cameraMediaStreamSource.CreateMediaStreamSource();
+
+                    var mediaSourceMain = MediaSource.CreateFromMediaStreamSource(mediaStreamSourceMain);
+                    var mediaSourcePreview = MediaSource.CreateFromMediaStreamSource(mediaStreamSourcePreview);
+
+                    // Настраиваем основной плеер
+                    if (mainVideoPlayer is not null)
+                    {
+                        System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Setting MediaSource on main video player (separate)...");
+                        ChyguiSlide.Data.InteractionLogger.Log("SetupVideoStreamAsync: assigning main MediaSource");
+
+                        var mainMediaPlayer = mainVideoPlayer.MediaPlayer ?? new MediaPlayer();
+                        mainMediaPlayer.IsMuted = false;
+                        mainMediaPlayer.AutoPlay = true;
+                        mainMediaPlayer.CommandManager.IsEnabled = false;
+                        if (mainVideoPlayer.MediaPlayer is null)
+                        {
+                            mainVideoPlayer.SetMediaPlayer(mainMediaPlayer);
+                        }
+
+                        mainVideoPlayer.Source = mediaSourceMain;
+                        mainMediaPlayer.Play();
+                    }
+
+                    // Настраиваем превью плеер
+                    if (previewVideoPlayer is not null)
+                    {
+                        try
+                        {
+                            System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Setting MediaSource on preview video player (separate)...");
+                            ChyguiSlide.Data.InteractionLogger.Log("SetupVideoStreamAsync: assigning preview MediaSource");
+
+                            var previewMediaPlayer = previewVideoPlayer.MediaPlayer ?? new MediaPlayer();
+                            previewMediaPlayer.IsMuted = false;
+                            previewMediaPlayer.AutoPlay = true;
+                            previewMediaPlayer.CommandManager.IsEnabled = false;
+                            if (previewVideoPlayer.MediaPlayer is null)
+                            {
+                                previewVideoPlayer.SetMediaPlayer(previewMediaPlayer);
+                            }
+
+                            previewVideoPlayer.Source = mediaSourcePreview;
+                            previewMediaPlayer.Play();
+                        }
+                        catch (Exception exPreview)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] Failed to set preview MediaSource: {exPreview.Message}");
+                            ChyguiSlide.Data.InteractionLogger.Log($"SetupVideoStreamAsync: failed to assign preview MediaSource: {exPreview.Message}");
+                        }
+                    }
+
+                    System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Video stream setup complete");
+                    ChyguiSlide.Data.InteractionLogger.Log("SetupVideoStreamAsync: complete");
+                }
+                catch (Exception innerEx)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] Error during SetupVideoStreamAsync assignment: {innerEx.Message}");
+                    ChyguiSlide.Data.InteractionLogger.Log($"SetupVideoStreamAsync: error - {innerEx.Message}");
                 }
             }
             catch (Exception ex)
@@ -858,14 +971,16 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
                 System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] MediaStreamSource changed, creating new MediaPlayer");
                 
                 var videoPlayer = _stage?.VideoPlayerElement ?? _window?.VideoPlayerElement;
-                if (videoPlayer == null)
+                var previewVideoPlayer = _previewStage?.VideoPlayerElement;
+
+                if (videoPlayer == null && previewVideoPlayer == null)
                 {
                     System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] VideoPlayerElement is null, cannot update MediaSource");
                     return;
                 }
-                
-                // Получаем текущий MediaPlayer и полностью очищаем его
-                var oldMediaPlayer = videoPlayer.MediaPlayer;
+
+                // Получаем текущий MediaPlayer и полностью очищаем его (для основного и превью)
+                var oldMediaPlayer = videoPlayer?.MediaPlayer;
                 if (oldMediaPlayer != null)
                 {
                     System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] Current MediaPlayer state: {oldMediaPlayer.CurrentState}");
@@ -876,12 +991,26 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
                     System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Paused and cleared old MediaPlayer");
                 }
                 
-                // Очищаем Source в MediaPlayerElement
-                videoPlayer.Source = null;
+                // Очищаем Source в MediaPlayerElement (основной и превью)
+                if (videoPlayer != null)
+                {
+                    videoPlayer.Source = null;
+                }
+                if (previewVideoPlayer != null)
+                {
+                    previewVideoPlayer.Source = null;
+                }
                 System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Cleared MediaPlayerElement Source");
                 
                 // Полностью удаляем MediaPlayer из MediaPlayerElement
-                videoPlayer.SetMediaPlayer(null);
+                if (videoPlayer != null)
+                {
+                    videoPlayer.SetMediaPlayer(null);
+                }
+                if (previewVideoPlayer != null)
+                {
+                    previewVideoPlayer.SetMediaPlayer(null);
+                }
                 System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Removed MediaPlayer from MediaPlayerElement");
                 
                 // Задержка для полного освобождения ресурсов
@@ -921,8 +1050,24 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
                 };
                 newMediaPlayer.CurrentStateChanged += stateChangedHandler;
                 
-                // Устанавливаем новый MediaPlayer в MediaPlayerElement ПЕРЕД установкой Source
-                videoPlayer.SetMediaPlayer(newMediaPlayer);
+                // Устанавливаем новый MediaPlayer в MediaPlayerElement ПЕРЕД установкой Source (для основного и превью)
+                if (videoPlayer != null)
+                {
+                    videoPlayer.SetMediaPlayer(newMediaPlayer);
+                }
+                if (previewVideoPlayer != null)
+                {
+                    // Для превью создаём отдельный MediaPlayer, чтобы избежать конфликтов
+                    try
+                    {
+                        var previewMediaPlayer = new MediaPlayer();
+                        previewVideoPlayer.SetMediaPlayer(previewMediaPlayer);
+                    }
+                    catch (Exception exPv)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] Failed to set MediaPlayer for preview: {exPv.Message}");
+                    }
+                }
                 System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Set new MediaPlayer in MediaPlayerElement");
                 
                 // Задержка для инициализации MediaPlayer в MediaPlayerElement
@@ -933,7 +1078,21 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
                 System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Created new MediaSource from MediaStreamSource");
                 
                 // Устанавливаем Source в MediaPlayerElement (используя уже установленный MediaPlayer)
-                videoPlayer.Source = newMediaSource;
+                if (videoPlayer != null)
+                {
+                    videoPlayer.Source = newMediaSource;
+                }
+                if (previewVideoPlayer != null)
+                {
+                    try
+                    {
+                        previewVideoPlayer.Source = newMediaSource;
+                    }
+                    catch (Exception exPv2)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] Failed to set preview Source: {exPv2.Message}");
+                    }
+                }
                 System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Set new MediaSource in MediaPlayerElement");
                 
                 // Задержка перед запуском воспроизведения

@@ -21,6 +21,7 @@ public sealed partial class LiveControlPage : Page
     public LiveControlPage()
     {
         InitializeComponent();
+        ChyguiSlide.Data.InteractionLogger.Log("LiveControlPage ctor");
         ViewModel = App.AppHost.Services.GetRequiredService<LiveControlViewModel>();
         DataContext = ViewModel;
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
@@ -220,14 +221,17 @@ public sealed partial class LiveControlPage : Page
 
     private void InitializeProjectionMirror()
     {
+        ChyguiSlide.Data.InteractionLogger.Log("InitializeProjectionMirror: enter");
         _projectionDisplayService = App.AppHost.Services.GetService<IProjectionDisplayService>();
         if (_projectionDisplayService is null)
         {
+            ChyguiSlide.Data.InteractionLogger.Log("InitializeProjectionMirror: projectionDisplayService is null");
             return;
         }
 
         // Используем существующий механизм сервиса для привязки превью
         // Сервис автоматически управляет перемещением ProjectionStageView между окном и превью
+        ChyguiSlide.Data.InteractionLogger.Log($"InitializeProjectionMirror: PreviewStageHost is {(PreviewStageHost is null ? "null" : "present")}");
         _projectionDisplayService.BindProgramPreviewHost(PreviewStageHost);
 
         // Подписываемся на изменения видимости окна проекции
@@ -249,6 +253,29 @@ public sealed partial class LiveControlPage : Page
         {
             PreviewStageHost.Visibility = Visibility.Collapsed;
             PreviewIdleHint.Visibility = Visibility.Visible;
+        }
+    }
+
+    private async void OnOpenProjectionClick(object sender, RoutedEventArgs e)
+    {
+        ChyguiSlide.Data.InteractionLogger.Log("OnOpenProjectionClick: button clicked");
+
+        try
+        {
+            if (ViewModel.OpenProjectionCommand is not null && ViewModel.OpenProjectionCommand.CanExecute(null))
+            {
+                ChyguiSlide.Data.InteractionLogger.Log("OnOpenProjectionClick: executing OpenProjectionCommand");
+                await ViewModel.OpenProjectionCommand.ExecuteAsync(null);
+                ChyguiSlide.Data.InteractionLogger.Log("OnOpenProjectionClick: command executed");
+            }
+            else
+            {
+                ChyguiSlide.Data.InteractionLogger.Log("OnOpenProjectionClick: command cannot execute or is null");
+            }
+        }
+        catch (Exception ex)
+        {
+            ChyguiSlide.Data.InteractionLogger.Log($"OnOpenProjectionClick: exception {ex.Message}");
         }
     }
 }

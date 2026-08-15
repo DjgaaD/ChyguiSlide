@@ -152,11 +152,8 @@ public sealed class DisplaySettingsService : IDisplaySettingsService
     {
         _dispatcher = DispatcherQueue.GetForCurrentThread() ?? App.MainDispatcherQueue;
         
-        // Используем тот же путь, что и для базы данных
-        var root = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "ChyguiSlide");
-        Directory.CreateDirectory(root);
+        // Используем локальный каталог приложения в %LocalAppData%
+        var root = ChyguiSlide.Data.AppPaths.GetLocalAppDataRoot();
         _settingsFilePath = Path.Combine(root, SettingsFileName);
     }
 

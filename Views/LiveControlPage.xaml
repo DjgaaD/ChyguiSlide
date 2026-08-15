@@ -71,8 +71,9 @@
                 <Button
                     Content="Начать показ"
                     Command="{Binding OpenProjectionCommand}"
+                    Click="OnOpenProjectionClick"
                     Style="{StaticResource AccentButtonStyle}"
-                    Visibility="{Binding IsProjectionWindowOpen, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Invert}" />
+                    Visibility="{Binding IsShowStarted, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Invert}" />
             </StackPanel>
 
             <!-- Блок 1: Быстрый плейлист -->

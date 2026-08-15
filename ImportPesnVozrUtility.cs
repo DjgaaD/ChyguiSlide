@@ -16,7 +16,7 @@ public class ImportPesnVozrUtility
 {
     public static async Task RunAsync(string[] args)
     {
-        var tempPath = Path.Combine(AppContext.BaseDirectory, "Temp");
+        var tempPath = Path.Combine(ChyguiSlide.Data.AppPaths.GetLocalAppDataRoot(), "Temp");
         var htmlFiles = Directory.GetFiles(tempPath, "*.htm", SearchOption.TopDirectoryOnly);
         
         if (htmlFiles.Length == 0)

@@ -1,13 +1,13 @@
 namespace ChyguiSlide.Services.Models;
 
-public record class ProjectionState(
+public record ProjectionState(
     Guid? SongId,
     Guid? PlaylistId,
     string? SongTitle,
     int SectionIndex,
     IReadOnlyList<string> VisibleLines,
     DateTimeOffset UpdatedAt,
-    string? ReferenceCaption = null)
+    string? ReferenceCaption)
 {
     public static ProjectionState Empty { get; } = new(
         null,

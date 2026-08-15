@@ -14,6 +14,7 @@ using ChyguiSlide.Services.Models;
 using Microsoft.UI.Dispatching;
 using NdiSource = ChyguiSlide.Services.Abstractions.NdiSource;
 using ChyguiSlide.Views.Dialogs;
+using ChyguiSlide.Data;
 
 namespace ChyguiSlide.ViewModels;
 
@@ -30,6 +31,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
     private readonly List<PlaylistEntry> _currentEntries = new();
     private readonly List<SectionSnapshot> _currentSections = new();
     private bool _suppressSectionSelection;
+    private DateTime? _lastUserSelectionUtc;
     private bool _isInitialized;
     public bool IsInitialized => _isInitialized;
     private bool _startShowInProgress;
@@ -87,6 +89,9 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
 
     [ObservableProperty]
     private bool isProjectionWindowOpen;
+
+    [ObservableProperty]
+    private bool isShowStarted;
 
     [ObservableProperty]
     private int currentSongIndex;
@@ -150,10 +155,10 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
 
         RefreshQueueCommand = new AsyncRelayCommand(LoadQueueAsync);
         ShowNextCommand = new RelayCommand(AdvanceOrNextSong);
-        ShowPreviousCommand = new RelayCommand(RewindOrPreviousSong);
+        ShowPreviousCommand = new AsyncRelayCommand(RewindOrPreviousSongAsync);
         ClearProjectionCommand = new RelayCommand(ClearProjection);
         SkipToSectionCommand = new RelayCommand<int>(SkipToSection);
-        OpenProjectionCommand = new AsyncRelayCommand(OpenProjectionAsync, () => !_projectionDisplayService.IsOpen);
+        OpenProjectionCommand = new AsyncRelayCommand(OpenProjectionAsync, () => !IsShowStarted);
         CloseProjectionCommand = new RelayCommand(CloseProjection, () => _projectionDisplayService.IsOpen);
         ToggleBlackoutCommand = new RelayCommand(ToggleBlackout, () => _projectionDisplayService.IsOpen);
         LoadSavedPlaylistCommand = new RelayCommand<Playlist>(LoadPlaylistIntoQuick, playlist => playlist is not null);
@@ -438,6 +443,11 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
 
     partial void OnSelectedEntryChanged(LiveQueueEntry? value)
     {
+        _ = OnSelectedEntryChangedAsync(value);
+    }
+
+    private async Task OnSelectedEntryChangedAsync(LiveQueueEntry? value)
+    {
         _currentEntries.Clear();
         _currentSections.Clear();
         Sections.Clear();
@@ -472,7 +482,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
             return;
         }
 
-        MoveToEntry(0);
+        await MoveToEntryAsync(0);
     }
 
     private async Task OpenProjectionAsync()
@@ -512,7 +522,11 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
         _ = RefreshNdiSourcesAsync();
     }
 
-    private void CloseProjection() => _projectionDisplayService.Hide();
+    private void CloseProjection()
+    {
+        IsShowStarted = false;
+        _projectionDisplayService.Hide();
+    }
 
     /// <summary>
     /// Esc / завершение показа: при постоянном фоне — только убрать текст, иначе закрыть окно.
@@ -528,6 +542,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
         {
             if (await _displaySettingsService.GetKeepProjectionBackgroundAsync())
             {
+                IsShowStarted = false;
                 _projectionDisplayService.SetBlackout(false);
                 ClearProjection();
                 StatusMessage = "Текст убран. Фон остаётся на экране.";
@@ -590,7 +605,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
                 AdvanceOrNextSong();
                 break;
             case AppHotkeyAction.PreviousSlide:
-                RewindOrPreviousSong();
+                _ = RewindOrPreviousSongAsync();
                 break;
         }
     }
@@ -654,7 +669,10 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
             var entryForShow = ResolveEntryForHotkeyStart();
             if (entryForShow?.Song is not null)
             {
-                await ShowSongSectionsAsync(entryForShow, ResolveSectionIndexForHotkeyStart(entryForShow));
+                // Устанавливаем флаг реального показа ДО вызова ShowSongSectionsAsync
+                IsShowStarted = true;
+
+                await ShowSongSectionsAsync(entryForShow, ResolveSectionIndexForHotkeyStart(entryForShow), forceShow: true);
                 if (!_projectionDisplayService.IsOpen)
                 {
                     await OpenProjectionAsync();
@@ -709,7 +727,8 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
     private void ClearProjection()
     {
         _projectionStateService.Clear();
-        UpdateSectionsHighlight(-1);
+        // Не сбрасываем выделение секции при очистке проекции, чтобы UI оставался в актуальном состоянии
+        // UpdateSectionsHighlight(-1);
         NotifySectionProgressChanged();
     }
 
@@ -993,8 +1012,11 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
             CurrentSongIndex = queueIdx;
         }
 
+        // Устанавливаем флаг реального показа ДО вызова ShowSongSectionsAsync
+        IsShowStarted = true;
+
         _projectionStateService.Clear();
-        await ShowSongSectionsAsync(entry);
+        await ShowSongSectionsAsync(entry, forceShow: true);
 
         if (startFromLastSection && _currentSections.Count > 0)
         {
@@ -1079,9 +1101,12 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
 
         CurrentSongIndex = Math.Max(0, _currentEntries.FindIndex(e => e.SongId == fullSong.Id));
 
+        // Устанавливаем флаг реального показа ДО вызова ShowSongSectionsAsync
+        IsShowStarted = true;
+
         // Сбрасываем старое состояние проектора и ставим новую песню с нужной секции
         _projectionStateService.Clear();
-        await ShowSongSectionsAsync(entry, startSectionIndex);
+        await ShowSongSectionsAsync(entry, startSectionIndex, forceShow: true);
 
         if (!_projectionDisplayService.IsOpen)
         {
@@ -1173,7 +1198,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
         await ShowSongSectionsAsync(entry);
     }
 
-    public async Task ShowSongSectionsAsync(PlaylistEntry? entry, int startSectionIndex = 0)
+    public async Task ShowSongSectionsAsync(PlaylistEntry? entry, int startSectionIndex = 0, bool forceShow = false)
     {
         if (entry?.Song is null)
         {
@@ -1264,6 +1289,24 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
             NotifySongProgressChanged();
             // Тот же слайд в state, но на экране мог остаться opacity=0 после сбоя анимации
             _projectionDisplayService.EnsureContentVisible();
+            return;
+        }
+
+        // Если включена опция "Держать фон на экране" и это не принудительный показ и показ не запущен,
+        // не показываем контент на экране при простом выборе секции
+        var keepBackground = await _displaySettingsService.GetKeepProjectionBackgroundAsync();
+        System.Diagnostics.Debug.WriteLine($"ShowSongSectionsAsync: keepBackground={keepBackground}, forceShow={forceShow}, IsShowStarted={IsShowStarted}, initialIndex={initialIndex}");
+
+        if (keepBackground && !forceShow && !IsShowStarted)
+        {
+            // Только загружаем секции в UI, но не выводим на экран
+            System.Diagnostics.Debug.WriteLine($"ShowSongSectionsAsync: Skipping projection, updating highlight to {initialIndex}");
+            UpdateSectionsHighlight(initialIndex);
+            StatusMessage = sections.Count > 0
+                ? $"Песня «{entry.Song.Title}» выбрана. Загружено {sections.Count} секций."
+                : $"Песня «{entry.Song.Title}» показана. Секций нет.";
+            NotifySectionProgressChanged();
+            NotifySongProgressChanged();
             return;
         }
 
@@ -1470,6 +1513,11 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
     private void OnProjectionVisibilityChanged(object? sender, bool isOpen)
     {
         IsProjectionWindowOpen = isOpen;
+        // Если окно закрывается, сбрасываем флаг показа
+        if (!isOpen)
+        {
+            IsShowStarted = false;
+        }
         OpenProjectionCommand.NotifyCanExecuteChanged();
         CloseProjectionCommand.NotifyCanExecuteChanged();
         ToggleBlackoutCommand.NotifyCanExecuteChanged();
@@ -1485,27 +1533,48 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
 
     partial void OnSelectedSectionChanged(LiveSectionItem? value)
     {
+        InteractionLogger.Log($"OnSelectedSectionChanged called. valueIndex={(value?.Index.ToString() ?? "null")}, _suppressSectionSelection={_suppressSectionSelection}");
+
         if (value is null || _suppressSectionSelection)
         {
+            InteractionLogger.Log($"OnSelectedSectionChanged ignored: value is null or suppressed. valueIndex={(value?.Index.ToString() ?? "null")}");
             return;
         }
 
         var index = Sections.IndexOf(value);
+        InteractionLogger.Log($"OnSelectedSectionChanged: clicked index={index}, SectionsCount={Sections.Count}");
         if (index < 0)
         {
             return;
         }
 
         // После Esc при постоянном фоне state очищен — GoToSection no-op.
-        // Выкладываем песню заново с выбранной секцией.
+        // В этом случае не перезагружаем коллекцию секций (это сбрасывает выделение в UI).
+        // Вместо этого просто обновим подсветку локально — пользователь ожидает один клик для выбора.
         if (_projectionStateService.Current.SongId is null
             && SelectedQuickEntry?.Song is not null)
         {
-            _ = ShowSongSectionsAsync(SelectedQuickEntry, index);
+            InteractionLogger.Log($"OnSelectedSectionChanged: projection empty, updating highlight locally to {index}");
+            _lastUserSelectionUtc = DateTime.UtcNow;
+            UpdateSectionsHighlight(index, forceSetSelected: true);
+            StatusMessage = Sections.Count > 0
+                ? $"Песня «{SelectedQuickEntry.Song.Title}» выбрана. Загружено {Sections.Count} секций."
+                : $"Песня «{SelectedQuickEntry.Song.Title}» выбрана. Секций нет.";
+            NotifySectionProgressChanged();
+            NotifySongProgressChanged();
             return;
         }
 
         SkipToSection(index);
+    }
+
+    partial void OnIsShowStartedChanged(bool value)
+    {
+        if (!value && IsBlackoutEnabled)
+        {
+            IsBlackoutEnabled = false;
+        }
+        OpenProjectionCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnIsProjectionWindowOpenChanged(bool value)
@@ -1571,7 +1640,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
         NotifySectionProgressChanged();
     }
 
-    private void RewindOrPreviousSong()
+    private async Task RewindOrPreviousSongAsync()
     {
         if (_currentSections.Count == 0)
         {
@@ -1592,7 +1661,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
 
             if (_currentEntries.Count > 0)
             {
-                MoveToEntry(CurrentSongIndex - 1, startFromLastSection: true);
+                await MoveToEntryAsync(CurrentSongIndex - 1, startFromLastSection: true);
             }
             else
             {
@@ -1622,7 +1691,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
         _projectionStateService.GoToSection(index);
     }
 
-    private void MoveToEntry(int targetIndex, bool startFromLastSection = false)
+    private async Task MoveToEntryAsync(int targetIndex, bool startFromLastSection = false)
     {
         if (_currentEntries.Count == 0)
         {
@@ -1690,18 +1759,54 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
         NotifySectionProgressChanged();
     }
 
-    private void UpdateSectionsHighlight(int activeIndex)
+    private void UpdateSectionsHighlight(int activeIndex, bool forceSetSelected = false)
     {
-        _suppressSectionSelection = true;
+        InteractionLogger.Log($"UpdateSectionsHighlight called: activeIndex={activeIndex}, SectionsCount={Sections.Count}");
 
-        for (var i = 0; i < Sections.Count; i++)
+        // Если недавно был пользовательский выбор — временно игнорируем внешние апдейты,
+        // чтобы не перезаписать выбор при быстро сменяющихся состояниях проекции.
+        if (!forceSetSelected && _lastUserSelectionUtc.HasValue)
         {
-            Sections[i].IsCurrent = i == activeIndex;
+            var ageMs = (DateTime.UtcNow - _lastUserSelectionUtc.Value).TotalMilliseconds;
+            if (ageMs >= 0 && ageMs < 800)
+            {
+                InteractionLogger.Log($"UpdateSectionsHighlight skipped due recent user selection (ageMs={ageMs:F0})");
+                return;
+            }
+            // Сбросим метку старой выборки
+            _lastUserSelectionUtc = null;
         }
 
-        SelectedSection = activeIndex >= 0 && activeIndex < Sections.Count
-            ? Sections[activeIndex]
-            : null;
+        _suppressSectionSelection = true;
+
+        // Если на проекторе нет активного слайда (пустой state), не трогаем IsCurrent —
+        // это предотвращает мерцание/сброс визуального выделения при простом клике в UI
+        var hasActiveContent = _projectionStateService.Current.SongId is not null && _projectionStateService.Current.VisibleLines.Count > 0;
+
+        InteractionLogger.Log($"UpdateSectionsHighlight: hasActiveContent={hasActiveContent}, currentSongId={_projectionStateService.Current.SongId}");
+
+        if (hasActiveContent)
+        {
+            for (var i = 0; i < Sections.Count; i++)
+            {
+                var before = Sections[i].IsCurrent;
+                Sections[i].IsCurrent = i == activeIndex;
+                if (before != Sections[i].IsCurrent)
+                {
+                    InteractionLogger.Log($"Section[{i}] IsCurrent changed: {before} -> {Sections[i].IsCurrent}");
+                }
+            }
+        }
+
+        var prevSelected = SelectedSection?.Index.ToString() ?? "null";
+        if (hasActiveContent || forceSetSelected)
+        {
+            SelectedSection = activeIndex >= 0 && activeIndex < Sections.Count
+                ? Sections[activeIndex]
+                : null;
+        }
+        var newSelected = SelectedSection?.Index.ToString() ?? "null";
+        InteractionLogger.Log($"UpdateSectionsHighlight: SelectedSection changed: {prevSelected} -> {newSelected}");
 
         _suppressSectionSelection = false;
     }

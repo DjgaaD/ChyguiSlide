@@ -202,8 +202,30 @@ public sealed class HotkeyDispatcher : IDisposable
     private IntPtr SetHook(LowLevelKeyboardProc proc)
     {
         using var curProcess = Process.GetCurrentProcess();
-        using var curModule = curProcess.MainModule!;
-        return SetWindowsHookEx(WhKeyboardLl, proc, GetModuleHandle(curModule.ModuleName), 0);
+        IntPtr moduleHandle = IntPtr.Zero;
+        try
+        {
+            ProcessModule? curModule = null;
+            try
+            {
+                curModule = curProcess.MainModule;
+            }
+            catch
+            {
+                curModule = null;
+            }
+
+            if (curModule != null && !string.IsNullOrEmpty(curModule.ModuleName))
+            {
+                moduleHandle = GetModuleHandle(curModule.ModuleName);
+            }
+        }
+        catch
+        {
+            moduleHandle = IntPtr.Zero;
+        }
+
+        return SetWindowsHookEx(WhKeyboardLl, proc, moduleHandle, 0);
     }
 
     private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);

@@ -160,7 +160,7 @@ internal static class NdiNative
     {
         try
         {
-            var logPath = Path.Combine(AppContext.BaseDirectory, "ndi.log");
+            var logPath = ChyguiSlide.Data.AppPaths.GetLogPath("ndi.log");
             var logLine = $"[{DateTime.Now:HH:mm:ss.fff}] {message}";
             File.AppendAllText(logPath, logLine + Environment.NewLine);
         }

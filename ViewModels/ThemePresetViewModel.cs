@@ -1280,13 +1280,14 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
                 {
                     await _projectionDisplayService.ShowAsync();
                 }
+
+                // При включении опции "Держать фон на экране" не устанавливаем флаг намеренного запуска
+                // Это только автоматическое открытие окна с фоном, не запуск трансляции
             }
-            else if (_projectionDisplayService.IsOpen)
+            else
             {
-                var hasContent = App.AppHost.Services.GetService(typeof(IProjectionStateService)) is IProjectionStateService state
-                    && state.Current.SongId is not null
-                    && state.Current.VisibleLines.Count > 0;
-                if (!hasContent)
+                // При выключении опции всегда закрываем окно, чтобы сбросить состояние
+                if (_projectionDisplayService.IsOpen)
                 {
                     _projectionDisplayService.Hide();
                 }
