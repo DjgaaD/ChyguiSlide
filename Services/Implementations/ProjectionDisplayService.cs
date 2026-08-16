@@ -115,13 +115,13 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
 
             AttachStageToWindow(_window, stage);
 
-            await TrySetFullScreenOnSelectedDisplayAsync(_window);
-            _window.Activate();
-
-            // Тема и раскладка после Activate — чтобы COM-компоненты были инициализированы
+            // Тема и раскладка до Activate — иначе краткий белый кадр пустого окна
             _viewModel!.BeginBackgroundSession();
             await ApplySavedThemeAsync(startNewBackgroundSession: true);
             await ApplyTextLayoutModeAsync();
+
+            await TrySetFullScreenOnSelectedDisplayAsync(_window);
+            _window.Activate();
 
             // Хоткеи должны работать и когда фокус на окне проекции
             _hotkeyDispatcher.AttachToProjection(stage);
@@ -242,8 +242,9 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
         try
         {
             var themePresetId = await _displaySettingsService.GetSelectedThemePresetIdAsync();
-            System.Diagnostics.Debug.WriteLine($"ApplySavedThemeAsync: themePresetId = {themePresetId}");
-            
+            System.Diagnostics.Debug.WriteLine($"ApplySavedThemeAsync: themePresetId = {themePresetId}, startNewBackgroundSession = {startNewBackgroundSession}");
+            ChyguiSlide.Data.InteractionLogger.Log($"ApplySavedThemeAsync: themePresetId = {themePresetId}, startNewBackgroundSession = {startNewBackgroundSession}");
+
             if (themePresetId.HasValue)
             {
                 // Если настройки уже открыты и тема редактируется/выбрана там,
@@ -252,6 +253,8 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
                     && themeEditor.GetCurrentProjectionTheme() is ThemePreset editorTheme
                     && editorTheme.Id == themePresetId.Value)
                 {
+                    System.Diagnostics.Debug.WriteLine($"ApplySavedThemeAsync: Применяем стиль из редактора '{editorTheme.Name}'");
+                    ChyguiSlide.Data.InteractionLogger.Log($"ApplySavedThemeAsync: Применяем стиль из редактора '{editorTheme.Name}'");
                     ApplyTheme(editorTheme, startNewBackgroundSession);
                     return;
                 }
@@ -259,24 +262,28 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
                 var themePreset = await _catalogService.GetThemePresetAsync(themePresetId.Value);
                 if (themePreset is not null)
                 {
-                    System.Diagnostics.Debug.WriteLine($"ApplySavedThemeAsync: Применяем стиль '{themePreset.Name}', IsBold={themePreset.IsBold}");
+                    System.Diagnostics.Debug.WriteLine($"ApplySavedThemeAsync: Применяем стиль из БД '{themePreset.Name}', IsBold={themePreset.IsBold}");
+                    ChyguiSlide.Data.InteractionLogger.Log($"ApplySavedThemeAsync: Применяем стиль из БД '{themePreset.Name}'");
                     ApplyTheme(themePreset, startNewBackgroundSession);
                 }
                 else
                 {
-                    System.Diagnostics.Debug.WriteLine($"ApplySavedThemeAsync: Стиль с ID {themePresetId.Value} не найден");
+                    System.Diagnostics.Debug.WriteLine($"ApplySavedThemeAsync: Стиль с ID {themePresetId.Value} не найден в БД");
+                    ChyguiSlide.Data.InteractionLogger.Log($"ApplySavedThemeAsync: Стиль с ID {themePresetId.Value} не найден в БД");
                     ApplyTheme(null, startNewBackgroundSession);
                 }
             }
             else
             {
-                System.Diagnostics.Debug.WriteLine($"ApplySavedThemeAsync: Стиль не выбран в настройках");
+                System.Diagnostics.Debug.WriteLine($"ApplySavedThemeAsync: Стиль не выбран в настройках, применяем null");
+                ChyguiSlide.Data.InteractionLogger.Log($"ApplySavedThemeAsync: Стиль не выбран в настройках, применяем null");
                 ApplyTheme(null, startNewBackgroundSession);
             }
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"ApplySavedThemeAsync: Ошибка: {ex.Message}");
+            ChyguiSlide.Data.InteractionLogger.Log($"ApplySavedThemeAsync: Ошибка: {ex.Message}");
             ApplyTheme(null, startNewBackgroundSession);
         }
     }
