@@ -204,9 +204,10 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
 
         _isInitialized = true;
         await LoadQueueAsync();
-        await LoadThemeFromSettingsAsync();
+        // Тема загружается только при открытии проекции, а не при инициализации
+        // await LoadThemeFromSettingsAsync();
         await EnsurePersistentBackgroundAsync();
-        
+
         // Обновляем команды после инициализации
         ToggleNdiVideoModeCommand.NotifyCanExecuteChanged();
         RefreshNdiSourcesCommand.NotifyCanExecuteChanged();
@@ -490,19 +491,8 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
         var alreadyOpen = _projectionDisplayService.IsOpen;
         await _projectionDisplayService.ShowAsync();
 
-        // Если окно уже было открыто (постоянный фон) — не переприменяем тему:
-        // повторный ApplyTheme сбрасывает видеофон.
-        if (!alreadyOpen)
-        {
-            if (_currentThemePreset is not null)
-            {
-                _projectionDisplayService.ApplyTheme(_currentThemePreset);
-            }
-            else
-            {
-                await LoadThemeFromSettingsAsync();
-            }
-        }
+        // Тема применяется внутри ShowAsync через ApplySavedThemeAsync
+        // Дублирование здесь вызывает проблемы с чёрным фоном при первом запуске
 
         // Отмечаем выбранную песню как проигранную при открытии трансляции
         try
