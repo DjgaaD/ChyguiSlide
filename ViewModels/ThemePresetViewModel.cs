@@ -1286,11 +1286,9 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
             }
             else
             {
-                // При выключении опции всегда закрываем окно, чтобы сбросить состояние
-                if (_projectionDisplayService.IsOpen)
-                {
-                    _projectionDisplayService.Hide();
-                }
+                // При выключении опции не закрываем окно автоматически
+                // Пользователь сам решит, когда закрыть трансляцию
+                // Это предотвращает COMException при повторном открытии
             }
         }
         catch (Exception ex)
