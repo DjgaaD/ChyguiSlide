@@ -116,8 +116,14 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
             AttachStageToWindow(_window, stage);
 
             // Тема и раскладка до Activate — иначе краткий белый кадр пустого окна
+            System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] ShowAsync: Before BeginBackgroundSession, ViewModel is null: {_viewModel is null}");
+            ChyguiSlide.Data.InteractionLogger.Log($"ShowAsync: Before BeginBackgroundSession, ViewModel is null: {_viewModel is null}");
             _viewModel!.BeginBackgroundSession();
+            System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] ShowAsync: Before ApplySavedThemeAsync");
+            ChyguiSlide.Data.InteractionLogger.Log($"ShowAsync: Before ApplySavedThemeAsync");
             await ApplySavedThemeAsync(startNewBackgroundSession: true);
+            System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] ShowAsync: After ApplySavedThemeAsync");
+            ChyguiSlide.Data.InteractionLogger.Log($"ShowAsync: After ApplySavedThemeAsync");
             await ApplyTextLayoutModeAsync();
 
             await TrySetFullScreenOnSelectedDisplayAsync(_window);
