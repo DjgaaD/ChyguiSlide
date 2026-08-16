@@ -36,7 +36,8 @@
                             Grid.Column="0"
                             Header="Название"
                             HorizontalAlignment="Stretch"
-                            Text="{Binding Title, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            Text="{Binding Title, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                            Paste="OnTitleTextBoxPaste" />
                         <TextBox
                             Grid.Column="1"
                             Header="Номер"

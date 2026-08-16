@@ -115,6 +115,10 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
 
             AttachStageToWindow(_window, stage);
 
+            // Сбрасываем syncedBackgroundVideoPath при открытии нового окна,
+            // чтобы видео устанавливалось заново для новых плееров
+            _syncedBackgroundVideoPath = null;
+
             // Тема и раскладка до Activate — иначе краткий белый кадр пустого окна
             System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] ShowAsync: Before BeginBackgroundSession, ViewModel is null: {_viewModel is null}");
             ChyguiSlide.Data.InteractionLogger.Log($"ShowAsync: Before BeginBackgroundSession, ViewModel is null: {_viewModel is null}");
@@ -167,6 +171,10 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
 
             if (host is not null)
             {
+                // Сбрасываем syncedBackgroundVideoPath при привязке превью,
+                // чтобы видео устанавливалось заново для плеера превью
+                _syncedBackgroundVideoPath = null;
+
                 System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Attaching preview stage to host");
                 ChyguiSlide.Data.InteractionLogger.Log("Attaching preview stage to host");
                 AttachStageToPreview(_previewStage);
@@ -356,6 +364,10 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
             window.Close();
             ProjectionWindowVisibilityChanged?.Invoke(this, false);
 
+            // Сбрасываем syncedBackgroundVideoPath после закрытия окна,
+            // чтобы при следующем открытии видео устанавливалось заново
+            _syncedBackgroundVideoPath = null;
+
             try
             {
                 await DisconnectFromCameraAsync();
@@ -426,6 +438,8 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
     {
         if (_viewModel is null)
         {
+            System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] _viewModel is null, returning");
+            ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: _viewModel is null, returning");
             return;
         }
 
@@ -436,15 +450,23 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
             _window?.BackgroundVideoPlayerElement
         };
 
+        System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] IsBackgroundVideoVisible={_viewModel.IsBackgroundVideoVisible}, BackgroundVideoPath={_viewModel.BackgroundVideoPath}");
+        ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: IsBackgroundVideoVisible={_viewModel.IsBackgroundVideoVisible}, BackgroundVideoPath={_viewModel.BackgroundVideoPath}");
+
         var desiredPath = _viewModel.IsBackgroundVideoVisible
             && !string.IsNullOrWhiteSpace(_viewModel.BackgroundVideoPath)
             && File.Exists(_viewModel.BackgroundVideoPath)
             ? _viewModel.BackgroundVideoPath
             : null;
 
+        System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] desiredPath={desiredPath}, _syncedBackgroundVideoPath={_syncedBackgroundVideoPath}");
+        ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: desiredPath={desiredPath}, _syncedBackgroundVideoPath={_syncedBackgroundVideoPath}");
+
         // Если путь не изменился и у хотя бы одного плеера уже есть Source, просто обновляем флаги.
         if (string.Equals(_syncedBackgroundVideoPath, desiredPath, StringComparison.OrdinalIgnoreCase))
         {
+            System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] Path unchanged, returning");
+            ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: Path unchanged, returning");
             if (desiredPath is not null)
             {
                 foreach (var p in players)
@@ -458,6 +480,9 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
 
             return;
         }
+
+        System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] Path changed, setting new video source");
+        ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: Path changed, setting new video source");
 
         // Очищаем предыдущие источники у всех плееров
         foreach (var p in players)
@@ -482,8 +507,13 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
 
         if (desiredPath is null)
         {
+            System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] desiredPath is null, returning");
+            ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: desiredPath is null, returning");
             return;
         }
+
+        System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] Setting video source for {players.Length} players");
+        ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: Setting video source for {players.Length} players");
 
         try
         {
@@ -492,11 +522,15 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
             {
                 if (p is null)
                 {
+                    System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] Player is null, skipping");
+                    ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: Player is null, skipping");
                     continue;
                 }
 
                 try
                 {
+                    System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] Setting source for player");
+                    ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: Setting source for player");
                     var mediaPlayer = p.MediaPlayer ?? new MediaPlayer();
                     mediaPlayer.IsLoopingEnabled = _viewModel.LoopBackgroundMedia;
                     mediaPlayer.IsMuted = true;
@@ -510,6 +544,8 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
                     var storageFile = await global::Windows.Storage.StorageFile.GetFileFromPathAsync(desiredPath);
                     p.Source = MediaSource.CreateFromStorageFile(storageFile);
                     mediaPlayer.Play();
+                    System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] Source set and play called");
+                    ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: Source set and play called");
                 }
                 catch (Exception exInner)
                 {
