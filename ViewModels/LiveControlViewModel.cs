@@ -204,8 +204,11 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
 
         _isInitialized = true;
         await LoadQueueAsync();
-        // Тема загружается только при открытии проекции, а не при инициализации
-        // await LoadThemeFromSettingsAsync();
+        // Загружаем тему только если окно проекции уже открыто (например, при постоянном фоне)
+        if (_projectionDisplayService.IsOpen)
+        {
+            await LoadThemeFromSettingsAsync();
+        }
         await EnsurePersistentBackgroundAsync();
 
         // Обновляем команды после инициализации

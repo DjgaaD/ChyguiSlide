@@ -113,15 +113,15 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
             _window = ActivatorUtilities.CreateInstance<ProjectionWindow>(_serviceProvider);
             _window.Closed += OnWindowClosed;
 
-            // Тема и раскладка до Activate — иначе краткий белый кадр пустого окна
-            _viewModel!.BeginBackgroundSession();
-            await ApplySavedThemeAsync(startNewBackgroundSession: true);
-            await ApplyTextLayoutModeAsync();
-
             AttachStageToWindow(_window, stage);
 
             await TrySetFullScreenOnSelectedDisplayAsync(_window);
             _window.Activate();
+
+            // Тема и раскладка после Activate — чтобы COM-компоненты были инициализированы
+            _viewModel!.BeginBackgroundSession();
+            await ApplySavedThemeAsync(startNewBackgroundSession: true);
+            await ApplyTextLayoutModeAsync();
 
             // Хоткеи должны работать и когда фокус на окне проекции
             _hotkeyDispatcher.AttachToProjection(stage);
@@ -182,7 +182,8 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
             _stage = new ProjectionStageView();
             _stage.BindViewModel(_viewModel);
             EnsureBackgroundMediaSubscription(_viewModel);
-            _ = ApplySavedThemeAsync(startNewBackgroundSession: false);
+            // Тема не применяется здесь - только в ShowAsync для избежания дублирования
+            // _ = ApplySavedThemeAsync(startNewBackgroundSession: false);
             _ = ApplyTextLayoutModeAsync();
         }
 
@@ -372,10 +373,18 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
     {
         _ = RunOnDispatcherAsync(async () =>
         {
-            _viewModel ??= _serviceProvider.GetRequiredService<ProjectionDisplayViewModel>();
-            EnsureBackgroundMediaSubscription(_viewModel);
-            _viewModel.ApplyTheme(theme, startNewBackgroundSession);
-            await SyncThemeBackgroundVideoAsync();
+            try
+            {
+                _viewModel ??= _serviceProvider.GetRequiredService<ProjectionDisplayViewModel>();
+                EnsureBackgroundMediaSubscription(_viewModel);
+                _viewModel.ApplyTheme(theme, startNewBackgroundSession);
+                await SyncThemeBackgroundVideoAsync();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ApplyTheme error: {ex.Message}");
+                ChyguiSlide.Data.InteractionLogger.Log($"ApplyTheme error: {ex.Message}");
+            }
         });
     }
 
