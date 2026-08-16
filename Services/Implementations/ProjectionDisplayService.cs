@@ -186,6 +186,12 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
             // _ = ApplySavedThemeAsync(startNewBackgroundSession: false);
             _ = ApplyTextLayoutModeAsync();
         }
+        else
+        {
+            // Если stage уже существует (например, после закрытия и повторного открытия),
+            // убеждаемся что ViewModel привязана правильно
+            _stage.BindViewModel(_viewModel);
+        }
 
         return _stage;
     }
@@ -337,6 +343,10 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
 
             _syncedBackgroundVideoPath = null;
             _window = null;
+            _stage = null;
+            // Не обнуляем _viewModel и _previewStage - они используются для превью
+            // _viewModel = null;
+            // _previewStage = null;
             window.Close();
             ProjectionWindowVisibilityChanged?.Invoke(this, false);
 
