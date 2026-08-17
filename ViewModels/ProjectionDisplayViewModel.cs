@@ -35,6 +35,7 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
     private Action? _resetTransitionVisuals;
     private int _linesApplyVersion;
     private string _lastVisibleLinesKey = string.Empty;
+    private Guid? _lastSongId;
 
     public Guid? AppliedThemeId => _appliedTheme?.Id;
 
@@ -341,6 +342,9 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
 
     public void ApplyTheme(ThemePreset? theme, bool startNewBackgroundSession = false)
     {
+        System.Diagnostics.Debug.WriteLine($"ApplyTheme: ENTER, theme={theme?.Name ?? "null"}, startNewBackgroundSession={startNewBackgroundSession}");
+        ChyguiSlide.Data.InteractionLogger.Log($"ApplyTheme: ENTER, theme={theme?.Name ?? "null"}, startNewBackgroundSession={startNewBackgroundSession}");
+
         if (startNewBackgroundSession)
         {
             BeginBackgroundSession();
@@ -354,6 +358,7 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
         _appliedTheme = theme;
 
         System.Diagnostics.Debug.WriteLine($"ApplyTheme: theme={theme?.Name ?? "null"}, Primary={colors.Primary}, Background={colors.Background}");
+        ChyguiSlide.Data.InteractionLogger.Log($"ApplyTheme: theme={theme?.Name ?? "null"}, Primary={colors.Primary}, Background={colors.Background}");
 
         FontFamilyName = string.IsNullOrWhiteSpace(theme?.FontFamily)
             ? "Segoe UI"
@@ -601,12 +606,19 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
 
     private void OnProjectionStateChanged(object? sender, ProjectionState state)
     {
+        System.Diagnostics.Debug.WriteLine($"[ProjectionDisplayViewModel] OnProjectionStateChanged: SongId={state.SongId}, SectionIndex={state.SectionIndex}, VisibleLines.Count={state.VisibleLines.Count}");
+        ChyguiSlide.Data.InteractionLogger.Log($"ProjectionDisplayViewModel.OnProjectionStateChanged: SongId={state.SongId}, SectionIndex={state.SectionIndex}, VisibleLines.Count={state.VisibleLines.Count}");
+
         if (_dispatcher.HasThreadAccess)
         {
+            System.Diagnostics.Debug.WriteLine($"[ProjectionDisplayViewModel] OnProjectionStateChanged: HasThreadAccess=true, calling UpdateFromState directly");
+            ChyguiSlide.Data.InteractionLogger.Log($"ProjectionDisplayViewModel.OnProjectionStateChanged: HasThreadAccess=true, calling UpdateFromState directly");
             UpdateFromState(state);
         }
         else
         {
+            System.Diagnostics.Debug.WriteLine($"[ProjectionDisplayViewModel] OnProjectionStateChanged: HasThreadAccess=false, enqueueing UpdateFromState");
+            ChyguiSlide.Data.InteractionLogger.Log($"ProjectionDisplayViewModel.OnProjectionStateChanged: HasThreadAccess=false, enqueueing UpdateFromState");
             _dispatcher.TryEnqueue(() => UpdateFromState(state));
         }
     }
@@ -652,6 +664,9 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
 
     private void UpdateFromState(ProjectionState state)
     {
+        System.Diagnostics.Debug.WriteLine($"[ProjectionDisplayViewModel] UpdateFromState: SongId={state.SongId}, SectionIndex={state.SectionIndex}, VisibleLines.Count={state.VisibleLines.Count}");
+        ChyguiSlide.Data.InteractionLogger.Log($"ProjectionDisplayViewModel.UpdateFromState: SongId={state.SongId}, SectionIndex={state.SectionIndex}, VisibleLines.Count={state.VisibleLines.Count}");
+
         var previousWasBible = !string.IsNullOrWhiteSpace(ReferenceCaption);
         var nextIsBible = !string.IsNullOrWhiteSpace(state.ReferenceCaption);
 
@@ -659,12 +674,37 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
         SectionIndex = state.SectionIndex;
         UpdatedAt = state.UpdatedAt.ToLocalTime();
 
-        if (previousWasBible != nextIsBible || _activeWallpaperPool is null)
+        // Не перезапускаем фон при смене песни, если фон уже установлен
+        // Это предотвращает мерцание при первом запуске показа с постоянным фоном
+        // Исключаем случай, когда предыдущее состояние было пустым (без песни) - это первый запуск
+        var isFirstRun = _lastSongId is null && state.SongId is not null;
+        var shouldApplyBackground = (previousWasBible != nextIsBible && !isFirstRun) || _activeWallpaperPool is null;
+        System.Diagnostics.Debug.WriteLine($"[ProjectionDisplayViewModel] UpdateFromState: shouldApplyBackground={shouldApplyBackground}, previousWasBible={previousWasBible}, nextIsBible={nextIsBible}, _activeWallpaperPool is null={_activeWallpaperPool is null}, isFirstRun={isFirstRun}");
+        ChyguiSlide.Data.InteractionLogger.Log($"ProjectionDisplayViewModel.UpdateFromState: shouldApplyBackground={shouldApplyBackground}, previousWasBible={previousWasBible}, nextIsBible={nextIsBible}, _activeWallpaperPool is null={_activeWallpaperPool is null}, isFirstRun={isFirstRun}");
+
+        if (shouldApplyBackground)
         {
+            System.Diagnostics.Debug.WriteLine($"[ProjectionDisplayViewModel] UpdateFromState: calling ApplyResolvedBackground");
+            ChyguiSlide.Data.InteractionLogger.Log($"ProjectionDisplayViewModel.UpdateFromState: calling ApplyResolvedBackground");
             ApplyResolvedBackground(forceNewRandom: false);
+        }
+        else
+        {
+            System.Diagnostics.Debug.WriteLine($"[ProjectionDisplayViewModel] UpdateFromState: skipping ApplyResolvedBackground (background already set)");
+            ChyguiSlide.Data.InteractionLogger.Log($"ProjectionDisplayViewModel.UpdateFromState: skipping ApplyResolvedBackground (background already set)");
         }
 
         var linesKey = BuildLinesKey(state.VisibleLines);
+
+        // Сбрасываем _lastVisibleLinesKey при смене песни, чтобы обеспечить обновление UI
+        if (state.SongId != _lastSongId)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ProjectionDisplayViewModel] UpdateFromState: SongId changed from {_lastSongId} to {state.SongId}, resetting _lastVisibleLinesKey");
+            ChyguiSlide.Data.InteractionLogger.Log($"ProjectionDisplayViewModel.UpdateFromState: SongId changed from {_lastSongId} to {state.SongId}, resetting _lastVisibleLinesKey");
+            _lastVisibleLinesKey = string.Empty;
+            _lastSongId = state.SongId;
+        }
+
         var shouldAnimate = !string.Equals(linesKey, _lastVisibleLinesKey, StringComparison.Ordinal)
             && !IsBlackout
             && SectionTransitionMode != SectionTransitionMode.None
@@ -672,7 +712,12 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
             && !string.IsNullOrEmpty(_lastVisibleLinesKey)
             && Lines.Count > 0; // первый слайд / пустой экран — без кроссфейда (иначе белая вспышка)
 
+        System.Diagnostics.Debug.WriteLine($"[ProjectionDisplayViewModel] UpdateFromState: linesKey={linesKey}, _lastVisibleLinesKey={_lastVisibleLinesKey}, shouldAnimate={shouldAnimate}");
+        ChyguiSlide.Data.InteractionLogger.Log($"ProjectionDisplayViewModel.UpdateFromState: linesKey={linesKey}, _lastVisibleLinesKey={_lastVisibleLinesKey}, shouldAnimate={shouldAnimate}");
+
         // Подпись/строки меняем только внутри apply — иначе до снимка текст уже дёргается
+        System.Diagnostics.Debug.WriteLine($"[ProjectionDisplayViewModel] UpdateFromState: calling ApplyVisibleLinesAsync");
+        ChyguiSlide.Data.InteractionLogger.Log($"ProjectionDisplayViewModel.UpdateFromState: calling ApplyVisibleLinesAsync");
         _ = ApplyVisibleLinesAsync(state.VisibleLines, state.ReferenceCaption, shouldAnimate);
     }
 
@@ -691,35 +736,51 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
         string? referenceCaption,
         bool animate)
     {
+        System.Diagnostics.Debug.WriteLine($"[ProjectionDisplayViewModel] ApplyVisibleLinesAsync: lines.Count={lines.Count}, referenceCaption={referenceCaption}, animate={animate}");
+        ChyguiSlide.Data.InteractionLogger.Log($"ProjectionDisplayViewModel.ApplyVisibleLinesAsync: lines.Count={lines.Count}, referenceCaption={referenceCaption}, animate={animate}");
+
         var version = ++_linesApplyVersion;
 
         async Task ApplyCoreAsync()
         {
             if (version != _linesApplyVersion)
             {
+                System.Diagnostics.Debug.WriteLine($"[ProjectionDisplayViewModel] ApplyCoreAsync: version mismatch, returning");
+                ChyguiSlide.Data.InteractionLogger.Log($"ProjectionDisplayViewModel.ApplyCoreAsync: version mismatch, returning");
                 return;
             }
 
+            System.Diagnostics.Debug.WriteLine($"[ProjectionDisplayViewModel] ApplyCoreAsync: setting ReferenceCaption={referenceCaption}");
+            ChyguiSlide.Data.InteractionLogger.Log($"ProjectionDisplayViewModel.ApplyCoreAsync: setting ReferenceCaption={referenceCaption}");
             ReferenceCaption = referenceCaption;
             NotifyReferenceVisibility();
 
             // Не дёргаем разрешение экрана на каждый слайд — это даёт рывки
             if (TextLayoutMode != TextLayoutMode.ShrinkToFit && DesignWidth <= 1)
             {
+                System.Diagnostics.Debug.WriteLine($"[ProjectionDisplayViewModel] ApplyCoreAsync: calling RefreshLinesWithDisplayResolutionAsync");
+                ChyguiSlide.Data.InteractionLogger.Log($"ProjectionDisplayViewModel.ApplyCoreAsync: calling RefreshLinesWithDisplayResolutionAsync");
                 await RefreshLinesWithDisplayResolutionAsync(lines).ConfigureAwait(true);
             }
             else
             {
+                System.Diagnostics.Debug.WriteLine($"[ProjectionDisplayViewModel] ApplyCoreAsync: calling RefreshLines");
+                ChyguiSlide.Data.InteractionLogger.Log($"ProjectionDisplayViewModel.ApplyCoreAsync: calling RefreshLines");
                 RefreshLines(lines);
             }
         }
 
         if (!animate || _playTransitionAsync is null || SectionTransitionMode == SectionTransitionMode.None)
         {
+            System.Diagnostics.Debug.WriteLine($"[ProjectionDisplayViewModel] ApplyVisibleLinesAsync: no animation, calling ApplyCoreAsync directly");
+            ChyguiSlide.Data.InteractionLogger.Log($"ProjectionDisplayViewModel.ApplyVisibleLinesAsync: no animation, calling ApplyCoreAsync directly");
             ClearOutgoingSnapshot();
             await ApplyCoreAsync().ConfigureAwait(true);
             return;
         }
+
+        System.Diagnostics.Debug.WriteLine($"[ProjectionDisplayViewModel] ApplyVisibleLinesAsync: animation enabled, SectionTransitionMode={SectionTransitionMode}");
+        ChyguiSlide.Data.InteractionLogger.Log($"ProjectionDisplayViewModel.ApplyVisibleLinesAsync: animation enabled, SectionTransitionMode={SectionTransitionMode}");
 
         if (SectionTransitionMode == SectionTransitionMode.CrossFade)
         {

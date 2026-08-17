@@ -6,6 +6,7 @@ using DocumentFormat.OpenXml.Presentation;
 using ChyguiSlide.Services.Abstractions;
 using ChyguiSlide.Services.Models;
 using A = DocumentFormat.OpenXml.Drawing;
+using System.Runtime.InteropServices;
 
 namespace ChyguiSlide.Services.Implementations;
 
@@ -38,8 +39,7 @@ public class PresentationImportService : IPresentationImportService
         {
             ".pptx" => ImportPptx(filePath),
             ".odp" => ImportOdp(filePath),
-            ".ppt" => throw new NotSupportedException(
-                "Формат .ppt не поддерживается. Сохраните файл как .pptx или .odp и попробуйте снова."),
+            ".ppt" => ImportPpt(filePath),
             _ => throw new NotSupportedException($"Формат «{ext}» не поддерживается.")
         };
     }
@@ -250,6 +250,81 @@ public class PresentationImportService : IPresentationImportService
 
     private static string NormalizeZipPath(string path) =>
         path.Replace('\\', '/').TrimStart('/');
+
+    private static PresentationImportResult ImportPpt(string filePath)
+    {
+        try
+        {
+            // Конвертируем PPT в PPTX через PowerPoint и затем используем существующий метод
+            var powerPointType = Type.GetTypeFromProgID("PowerPoint.Application");
+            if (powerPointType is null)
+            {
+                throw new InvalidOperationException(
+                    "Microsoft PowerPoint не установлен на этом компьютере. " +
+                    "Для импорта файлов .ppt требуется установленное приложение PowerPoint.");
+            }
+
+            dynamic powerPoint = Activator.CreateInstance(powerPointType);
+            
+            // Создаём временный файл для конвертации
+            var tempPptxPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".pptx");
+            
+            try
+            {
+                // Открываем PPT и сохраняем как PPTX
+                dynamic presentation = powerPoint.Presentations.Open(filePath, ReadOnly: true, Untitled: false, WithWindow: false);
+                presentation.SaveAs(tempPptxPath, PpSaveFormat.ppSaveAsOpenXMLPresentation);
+                presentation.Close();
+                
+                // Используем существующий метод для импорта PPTX
+                var result = ImportPptx(tempPptxPath);
+                
+                // Возвращаем оригинальное название файла
+                return new PresentationImportResult
+                {
+                    Title = Path.GetFileNameWithoutExtension(filePath),
+                    Slides = result.Slides
+                };
+            }
+            finally
+            {
+                // Удаляем временный файл
+                if (File.Exists(tempPptxPath))
+                {
+                    try
+                    {
+                        File.Delete(tempPptxPath);
+                    }
+                    catch
+                    {
+                        // Игнорируем ошибки при удалении временного файла
+                    }
+                }
+                
+                powerPoint.Quit();
+            }
+        }
+        catch (COMException ex)
+        {
+            throw new InvalidOperationException(
+                "Не удалось открыть файл PPT через PowerPoint. Убедитесь, что Microsoft PowerPoint установлен и файл не повреждён.",
+                ex);
+        }
+    }
+
+    private enum PpSaveFormat
+    {
+        ppSaveAsOpenXMLPresentation = 24
+    }
+
+    private enum MsoTriState
+    {
+        msoFalse = 0,
+        msoTrue = -1,
+        msoCTrue = 1,
+        msoTriStateToggle = -3,
+        msoTriStateMixed = -2
+    }
 
     private static PresentationImportResult ImportOdp(string filePath)
     {

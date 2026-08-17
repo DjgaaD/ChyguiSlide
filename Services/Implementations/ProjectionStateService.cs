@@ -158,22 +158,32 @@ public class ProjectionStateService : IProjectionStateService
 
     public void GoToSection(int index)
     {
+        System.Diagnostics.Debug.WriteLine($"[ProjectionStateService] GoToSection: index={index}, _sections.Count={_sections.Count}, _sectionIndex={_sectionIndex}");
+        ChyguiSlide.Data.InteractionLogger.Log($"ProjectionStateService.GoToSection: index={index}, _sections.Count={_sections.Count}, _sectionIndex={_sectionIndex}");
+
         lock (_stateLock)
         {
             if (_sections.Count == 0)
             {
+                System.Diagnostics.Debug.WriteLine($"[ProjectionStateService] GoToSection: _sections.Count is 0, returning");
+                ChyguiSlide.Data.InteractionLogger.Log($"ProjectionStateService.GoToSection: _sections.Count is 0, returning");
                 return;
             }
 
             index = Math.Clamp(index, 0, _sections.Count - 1);
+            System.Diagnostics.Debug.WriteLine($"[ProjectionStateService] GoToSection: clamped index={index}, _sectionIndex={_sectionIndex}");
+            ChyguiSlide.Data.InteractionLogger.Log($"ProjectionStateService.GoToSection: clamped index={index}, _sectionIndex={_sectionIndex}");
 
-            if (index == _sectionIndex)
-            {
-                return;
-            }
+            // Убрали проверку index == _sectionIndex, потому что
+            // UpdateSectionsHighlight может обновить _sectionIndex до вызова GoToSection
+            // и тогда PublishState не будет вызван, хотя содержимое на проекторе нужно обновить
 
+            System.Diagnostics.Debug.WriteLine($"[ProjectionStateService] GoToSection: setting _sectionIndex={index}");
+            ChyguiSlide.Data.InteractionLogger.Log($"ProjectionStateService.GoToSection: setting _sectionIndex={index}");
             _sectionIndex = index;
             _linesOverride = null;
+            System.Diagnostics.Debug.WriteLine($"[ProjectionStateService] GoToSection: calling PublishState");
+            ChyguiSlide.Data.InteractionLogger.Log($"ProjectionStateService.GoToSection: calling PublishState");
             PublishState();
         }
     }
@@ -224,6 +234,9 @@ public class ProjectionStateService : IProjectionStateService
             caption = _sectionCaptions[_sectionIndex];
         }
 
+        System.Diagnostics.Debug.WriteLine($"[ProjectionStateService] PublishState: _songId={_songId}, _sectionIndex={_sectionIndex}, lines.Count={lines.Count}");
+        ChyguiSlide.Data.InteractionLogger.Log($"ProjectionStateService.PublishState: _songId={_songId}, _sectionIndex={_sectionIndex}, lines.Count={lines.Count}, caption={caption}");
+
         _current = new ProjectionState(
             _songId,
             _playlistId,
@@ -233,6 +246,8 @@ public class ProjectionStateService : IProjectionStateService
             DateTimeOffset.UtcNow,
             caption);
 
+        System.Diagnostics.Debug.WriteLine($"[ProjectionStateService] PublishState: invoking StateChanged");
+        ChyguiSlide.Data.InteractionLogger.Log($"ProjectionStateService.PublishState: invoking StateChanged");
         StateChanged?.Invoke(this, _current);
     }
 

@@ -39,5 +39,7 @@ public interface IDisplaySettingsService
     Task SetBiblePickerLayoutAsync(BiblePickerLayoutMode mode);
     Task<NavigationPaneMode> GetNavigationPaneModeAsync();
     Task SetNavigationPaneModeAsync(NavigationPaneMode mode);
+    Task<bool> GetAskBeforeCloseAsync();
+    Task SetAskBeforeCloseAsync(bool ask);
 }
 

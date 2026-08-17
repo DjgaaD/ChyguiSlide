@@ -1218,7 +1218,11 @@ public sealed class DisplaySettingsService : IDisplaySettingsService
 
     public async Task SetKeepProjectionBackgroundAsync(bool keep)
     {
+        System.Diagnostics.Debug.WriteLine($"[DisplaySettingsService] SetKeepProjectionBackgroundAsync: keep={keep}");
+        ChyguiSlide.Data.InteractionLogger.Log($"DisplaySettingsService.SetKeepProjectionBackgroundAsync: keep={keep}");
         await WriteSettingAsync(KeepProjectionBackgroundKey, keep.ToString()).ConfigureAwait(false);
+        System.Diagnostics.Debug.WriteLine($"[DisplaySettingsService] SetKeepProjectionBackgroundAsync: WriteSettingAsync completed");
+        ChyguiSlide.Data.InteractionLogger.Log($"DisplaySettingsService.SetKeepProjectionBackgroundAsync: WriteSettingAsync completed");
     }
 
     public async Task<BibleReferencePlacement> GetBibleReferencePlacementAsync()
@@ -1288,6 +1292,19 @@ public sealed class DisplaySettingsService : IDisplaySettingsService
     public async Task SetNavigationPaneModeAsync(NavigationPaneMode mode)
     {
         await WriteSettingAsync(NavigationPaneModeKey, mode.ToString()).ConfigureAwait(false);
+    }
+
+    private const string AskBeforeCloseKey = "AskBeforeClose";
+
+    public async Task<bool> GetAskBeforeCloseAsync()
+    {
+        var value = await ReadSettingAsync(AskBeforeCloseKey).ConfigureAwait(false);
+        return bool.TryParse(value, out var result) ? result : true; // По умолчанию включено
+    }
+
+    public async Task SetAskBeforeCloseAsync(bool ask)
+    {
+        await WriteSettingAsync(AskBeforeCloseKey, ask.ToString()).ConfigureAwait(false);
     }
 
     private Task<string?> ReadSettingAsync(string key)

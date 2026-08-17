@@ -38,6 +38,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
     private string _quickPlaylistName = "Быстрый плейлист";
     private ThemePreset? _currentThemePreset;
     private bool _suppressQuickEntryShow;
+    private bool _isUpdatingSectionsHighlight;
 
     public ObservableCollection<LiveQueueEntry> Queue { get; } = new();
     public ObservableCollection<Playlist> SavedPlaylists { get; } = new();
@@ -158,7 +159,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
         ShowPreviousCommand = new AsyncRelayCommand(RewindOrPreviousSongAsync);
         ClearProjectionCommand = new RelayCommand(ClearProjection);
         SkipToSectionCommand = new RelayCommand<int>(SkipToSection);
-        OpenProjectionCommand = new AsyncRelayCommand(OpenProjectionAsync, () => !IsShowStarted);
+        OpenProjectionCommand = new AsyncRelayCommand(StartShowFromButtonAsync, () => !IsShowStarted);
         CloseProjectionCommand = new RelayCommand(CloseProjection, () => _projectionDisplayService.IsOpen);
         ToggleBlackoutCommand = new RelayCommand(ToggleBlackout, () => _projectionDisplayService.IsOpen);
         LoadSavedPlaylistCommand = new RelayCommand<Playlist>(LoadPlaylistIntoQuick, playlist => playlist is not null);
@@ -488,7 +489,15 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
     private async Task OpenProjectionAsync()
     {
         var alreadyOpen = _projectionDisplayService.IsOpen;
-        await _projectionDisplayService.ShowAsync();
+
+        System.Diagnostics.Debug.WriteLine($"OpenProjectionAsync: alreadyOpen={alreadyOpen}");
+
+        // Если окно уже открыто (например, через постоянный фон), не вызываем ShowAsync
+        // чтобы избежать повторного применения темы и чёрного мерцания
+        if (!alreadyOpen)
+        {
+            await _projectionDisplayService.ShowAsync();
+        }
 
         // Тема применяется внутри ShowAsync через ApplySavedThemeAsync
         // Дублирование здесь вызывает проблемы с чёрным фоном при первом запуске
@@ -561,14 +570,13 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
                 return;
             }
 
-            // Сначала очищаем контент — иначе при Show подтянется старый слайд
-            ClearProjection();
+            // Не очищаем контент перед открытием - это вызывает мерцание чёрным экраном
+            // Фон уже должен быть установлен через ApplyTheme
             _projectionDisplayService.SetBlackout(false);
 
             if (!_projectionDisplayService.IsOpen)
             {
                 await OpenProjectionAsync();
-                ClearProjection();
             }
         }
         catch (Exception ex)
@@ -597,6 +605,16 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
                 _ = RewindOrPreviousSongAsync();
                 break;
         }
+    }
+
+    /// <summary>
+    /// Кнопка «Начать показ».
+    /// В каталоге с выбранной песней — всегда запускаем именно её (и открываем Трансляцию).
+    /// Иначе — продолжаем текущий контент / быстрый плейлист / пустой проектор.
+    /// </summary>
+    private async Task StartShowFromButtonAsync()
+    {
+        await StartShowFromHotkeyAsync();
     }
 
     /// <summary>
@@ -1268,8 +1286,13 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
             && current.SectionIndex == initialIndex
             && current.VisibleLines.Count > 0;
 
+        System.Diagnostics.Debug.WriteLine($"ShowSongSectionsAsync: current.SongId={current.SongId}, entry.SongId={entry.SongId}, current.SectionIndex={current.SectionIndex}, initialIndex={initialIndex}, current.VisibleLines.Count={current.VisibleLines.Count}, alreadyOnScreen={alreadyOnScreen}");
+        ChyguiSlide.Data.InteractionLogger.Log($"ShowSongSectionsAsync: current.SongId={current.SongId}, entry.SongId={entry.SongId}, current.SectionIndex={current.SectionIndex}, initialIndex={initialIndex}, current.VisibleLines.Count={current.VisibleLines.Count}, alreadyOnScreen={alreadyOnScreen}");
+
         if (alreadyOnScreen)
         {
+            System.Diagnostics.Debug.WriteLine($"ShowSongSectionsAsync: alreadyOnScreen=true, returning early");
+            ChyguiSlide.Data.InteractionLogger.Log($"ShowSongSectionsAsync: alreadyOnScreen=true, returning early");
             UpdateSectionsHighlight(current.SectionIndex);
             StatusMessage = sections.Count > 0
                 ? $"Песня «{entry.Song.Title}» выбрана. Загружено {sections.Count} секций."
@@ -1306,7 +1329,9 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
 
         // Фон/тема уже на проекторе при открытом окне (постоянный фон) —
         // повторный ApplyTheme гасит видеофон. Применяем только если окна ещё нет.
-        if (!_projectionDisplayService.IsOpen)
+        var isOpen = _projectionDisplayService.IsOpen;
+        System.Diagnostics.Debug.WriteLine($"ShowSongSectionsAsync: IsOpen={isOpen}, skipping theme application");
+        if (!isOpen)
         {
             if (_currentThemePreset is not null)
             {
@@ -1522,7 +1547,14 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
 
     partial void OnSelectedSectionChanged(LiveSectionItem? value)
     {
-        InteractionLogger.Log($"OnSelectedSectionChanged called. valueIndex={(value?.Index.ToString() ?? "null")}, _suppressSectionSelection={_suppressSectionSelection}");
+        InteractionLogger.Log($"OnSelectedSectionChanged called. valueIndex={(value?.Index.ToString() ?? "null")}, _suppressSectionSelection={_suppressSectionSelection}, _isUpdatingSectionsHighlight={_isUpdatingSectionsHighlight}");
+
+        // Игнорируем если изменение SelectedSection произошло программно в UpdateSectionsHighlight
+        if (_isUpdatingSectionsHighlight)
+        {
+            InteractionLogger.Log($"OnSelectedSectionChanged ignored: updating sections highlight programmatically. valueIndex={(value?.Index.ToString() ?? "null")}");
+            return;
+        }
 
         if (value is null || _suppressSectionSelection)
         {
@@ -1665,18 +1697,26 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
 
     private void SkipToSection(int index)
     {
+        System.Diagnostics.Debug.WriteLine($"SkipToSection: index={index}, _currentSections.Count={_currentSections.Count}");
+        ChyguiSlide.Data.InteractionLogger.Log($"SkipToSection: index={index}, _currentSections.Count={_currentSections.Count}");
+
         if (_currentSections.Count == 0)
         {
+            System.Diagnostics.Debug.WriteLine($"SkipToSection: _currentSections.Count is 0, returning");
+            ChyguiSlide.Data.InteractionLogger.Log($"SkipToSection: _currentSections.Count is 0, returning");
             return;
         }
 
         index = Math.Clamp(index, 0, _currentSections.Count - 1);
+        System.Diagnostics.Debug.WriteLine($"SkipToSection: clamped index={index}, CurrentState.SectionIndex={CurrentState.SectionIndex}");
+        ChyguiSlide.Data.InteractionLogger.Log($"SkipToSection: clamped index={index}, CurrentState.SectionIndex={CurrentState.SectionIndex}");
 
-        if (index == CurrentState.SectionIndex)
-        {
-            return;
-        }
+        // Убрали проверку index == CurrentState.SectionIndex, потому что
+        // UpdateSectionsHighlight может обновить CurrentState.SectionIndex до вызова SkipToSection
+        // и тогда GoToSection не будет вызван, хотя содержимое на проекторе нужно обновить
 
+        System.Diagnostics.Debug.WriteLine($"SkipToSection: calling GoToSection({index})");
+        ChyguiSlide.Data.InteractionLogger.Log($"SkipToSection: calling GoToSection({index})");
         _projectionStateService.GoToSection(index);
     }
 
@@ -1752,52 +1792,69 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
     {
         InteractionLogger.Log($"UpdateSectionsHighlight called: activeIndex={activeIndex}, SectionsCount={Sections.Count}");
 
-        // Если недавно был пользовательский выбор — временно игнорируем внешние апдейты,
-        // чтобы не перезаписать выбор при быстро сменяющихся состояниях проекции.
-        if (!forceSetSelected && _lastUserSelectionUtc.HasValue)
+        // Предотвращаем рекурсию при программном изменении SelectedSection
+        _isUpdatingSectionsHighlight = true;
+        try
         {
-            var ageMs = (DateTime.UtcNow - _lastUserSelectionUtc.Value).TotalMilliseconds;
-            if (ageMs >= 0 && ageMs < 800)
+            // Если недавно был пользовательский выбор — временно игнорируем внешние апдейты,
+            // чтобы не перезаписать выбор при быстро сменяющихся состояниях проекции.
+            if (!forceSetSelected && _lastUserSelectionUtc.HasValue)
             {
-                InteractionLogger.Log($"UpdateSectionsHighlight skipped due recent user selection (ageMs={ageMs:F0})");
-                return;
-            }
-            // Сбросим метку старой выборки
-            _lastUserSelectionUtc = null;
-        }
-
-        _suppressSectionSelection = true;
-
-        // Если на проекторе нет активного слайда (пустой state), не трогаем IsCurrent —
-        // это предотвращает мерцание/сброс визуального выделения при простом клике в UI
-        var hasActiveContent = _projectionStateService.Current.SongId is not null && _projectionStateService.Current.VisibleLines.Count > 0;
-
-        InteractionLogger.Log($"UpdateSectionsHighlight: hasActiveContent={hasActiveContent}, currentSongId={_projectionStateService.Current.SongId}");
-
-        if (hasActiveContent)
-        {
-            for (var i = 0; i < Sections.Count; i++)
-            {
-                var before = Sections[i].IsCurrent;
-                Sections[i].IsCurrent = i == activeIndex;
-                if (before != Sections[i].IsCurrent)
+                var ageMs = (DateTime.UtcNow - _lastUserSelectionUtc.Value).TotalMilliseconds;
+                if (ageMs >= 0 && ageMs < 800)
                 {
-                    InteractionLogger.Log($"Section[{i}] IsCurrent changed: {before} -> {Sections[i].IsCurrent}");
+                    InteractionLogger.Log($"UpdateSectionsHighlight skipped due recent user selection (ageMs={ageMs:F0})");
+                    return;
+                }
+                // Сбросим метку старой выборки
+                _lastUserSelectionUtc = null;
+            }
+
+            // Если на проекторе нет активного слайда (пустой state), не трогаем IsCurrent —
+            // это предотвращает мерцание/сброс визуального выделения при простом клике в UI
+            var hasActiveContent = _projectionStateService.Current.SongId is not null && _projectionStateService.Current.VisibleLines.Count > 0;
+
+            InteractionLogger.Log($"UpdateSectionsHighlight: hasActiveContent={hasActiveContent}, currentSongId={_projectionStateService.Current.SongId}");
+
+            // Блокируем только если нет активного контента - тогда UpdateSectionsHighlight вызывается программно
+            // и нужно предотвратить рекурсию. Если есть активный контент, пользовательские клики должны работать.
+            if (!hasActiveContent)
+            {
+                _suppressSectionSelection = true;
+            }
+
+            if (hasActiveContent)
+            {
+                for (var i = 0; i < Sections.Count; i++)
+                {
+                    var before = Sections[i].IsCurrent;
+                    Sections[i].IsCurrent = i == activeIndex;
+                    if (before != Sections[i].IsCurrent)
+                    {
+                        InteractionLogger.Log($"Section[{i}] IsCurrent changed: {before} -> {Sections[i].IsCurrent}");
+                    }
                 }
             }
-        }
 
-        var prevSelected = SelectedSection?.Index.ToString() ?? "null";
-        if (hasActiveContent || forceSetSelected)
+            var prevSelected = SelectedSection?.Index.ToString() ?? "null";
+            if (hasActiveContent || forceSetSelected)
+            {
+                SelectedSection = activeIndex >= 0 && activeIndex < Sections.Count
+                    ? Sections[activeIndex]
+                    : null;
+            }
+            var newSelected = SelectedSection?.Index.ToString() ?? "null";
+            InteractionLogger.Log($"UpdateSectionsHighlight: SelectedSection changed: {prevSelected} -> {newSelected}");
+
+            if (!hasActiveContent)
+            {
+                _suppressSectionSelection = false;
+            }
+        }
+        finally
         {
-            SelectedSection = activeIndex >= 0 && activeIndex < Sections.Count
-                ? Sections[activeIndex]
-                : null;
+            _isUpdatingSectionsHighlight = false;
         }
-        var newSelected = SelectedSection?.Index.ToString() ?? "null";
-        InteractionLogger.Log($"UpdateSectionsHighlight: SelectedSection changed: {prevSelected} -> {newSelected}");
-
-        _suppressSectionSelection = false;
     }
 
     private void NotifySongProgressChanged() => OnPropertyChanged(nameof(SongProgressLabel));

@@ -766,6 +766,7 @@ public sealed partial class SongEditorViewModel : ObservableRecipient
         };
 
         picker.FileTypeFilter.Add(".pptx");
+        picker.FileTypeFilter.Add(".ppt");
         picker.FileTypeFilter.Add(".odp");
 
         InitializeWithWindow.Initialize(picker, App.MainWindowHandle);

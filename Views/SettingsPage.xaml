@@ -393,6 +393,8 @@
                                     </Grid>
                                 </Border>
                             </Grid>
+
+                            <CheckBox Content="Спрашивать перед закрытием" IsChecked="{Binding AskBeforeClose, Mode=TwoWay}" />
                         </StackPanel>
                     </Border>
 

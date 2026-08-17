@@ -245,8 +245,12 @@ public partial class CatalogViewModel : ObservableRecipient
 
     public void RequestSearchFocus()
     {
+        System.Diagnostics.Debug.WriteLine($"[CatalogViewModel] RequestSearchFocus called");
+        ChyguiSlide.Data.InteractionLogger.Log($"CatalogViewModel.RequestSearchFocus called");
         _pendingSearchFocusRequest = true;
         SearchFocusRequested?.Invoke();
+        System.Diagnostics.Debug.WriteLine($"[CatalogViewModel] SearchFocusRequested invoked, has listeners: {SearchFocusRequested != null}");
+        ChyguiSlide.Data.InteractionLogger.Log($"CatalogViewModel.SearchFocusRequested invoked, has listeners: {SearchFocusRequested != null}");
     }
 
     public bool ConsumePendingSearchFocusRequest()

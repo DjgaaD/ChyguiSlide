@@ -117,21 +117,23 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
 
             // Сбрасываем syncedBackgroundVideoPath при открытии нового окна,
             // чтобы видео устанавливалось заново для новых плееров
+            var keepBackground = await _displaySettingsService.GetKeepProjectionBackgroundAsync();
             _syncedBackgroundVideoPath = null;
 
             // Тема и раскладка до Activate — иначе краткий белый кадр пустого окна
-            System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] ShowAsync: Before BeginBackgroundSession, ViewModel is null: {_viewModel is null}");
-            ChyguiSlide.Data.InteractionLogger.Log($"ShowAsync: Before BeginBackgroundSession, ViewModel is null: {_viewModel is null}");
-            _viewModel!.BeginBackgroundSession();
             System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] ShowAsync: Before ApplySavedThemeAsync");
             ChyguiSlide.Data.InteractionLogger.Log($"ShowAsync: Before ApplySavedThemeAsync");
-            await ApplySavedThemeAsync(startNewBackgroundSession: true);
+            // Не начинаем новую сессию фона при постоянном фоне, чтобы избежать мерцания
+            await ApplySavedThemeAsync(startNewBackgroundSession: !keepBackground);
             System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] ShowAsync: After ApplySavedThemeAsync");
             ChyguiSlide.Data.InteractionLogger.Log($"ShowAsync: After ApplySavedThemeAsync");
             await ApplyTextLayoutModeAsync();
 
             await TrySetFullScreenOnSelectedDisplayAsync(_window);
             _window.Activate();
+
+            // Исключаем окно из Aero Peek после того как оно показано
+            _window.ExcludeFromAeroPeek();
 
             // Хоткеи должны работать и когда фокус на окне проекции
             _hotkeyDispatcher.AttachToProjection(stage);
@@ -171,15 +173,17 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
 
             if (host is not null)
             {
-                // Сбрасываем syncedBackgroundVideoPath при привязке превью,
-                // чтобы видео устанавливалось заново для плеера превью
-                _syncedBackgroundVideoPath = null;
+                // Не сбрасываем syncedBackgroundVideoPath при привязке превью,
+                // чтобы предотвратить мигание чёрным экраном при перезапуске видео
+                // при включении опции "Держать фон на экране"
 
                 System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Attaching preview stage to host");
                 ChyguiSlide.Data.InteractionLogger.Log("Attaching preview stage to host");
                 AttachStageToPreview(_previewStage);
                 // Принудительно обновляем превью при привязке
                 _viewModel?.EnsureContentVisible();
+                // Синхронизируем видео фона для плеера превью
+                _ = SyncThemeBackgroundVideoAsync();
             }
             else if (_previewStage?.Parent is Panel parent)
             {
@@ -462,16 +466,51 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
         System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] desiredPath={desiredPath}, _syncedBackgroundVideoPath={_syncedBackgroundVideoPath}");
         ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: desiredPath={desiredPath}, _syncedBackgroundVideoPath={_syncedBackgroundVideoPath}");
 
-        // Если путь не изменился и у хотя бы одного плеера уже есть Source, просто обновляем флаги.
-        if (string.Equals(_syncedBackgroundVideoPath, desiredPath, StringComparison.OrdinalIgnoreCase))
+        // Проверяем, есть ли плееры без источника видео (например, только что созданный плеер превью)
+        var hasPlayerWithoutSource = players.Any(p => p?.Source is null);
+        System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] hasPlayerWithoutSource={hasPlayerWithoutSource}");
+        ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: hasPlayerWithoutSource={hasPlayerWithoutSource}");
+
+        // Если путь не изменился, не перезапускаем видео в плеерах, которые уже имеют источник.
+        // Но устанавливаем видео в плеерах без источника (превью).
+        // Это предотвращает мерцание при первом запуске показа с постоянным фоном,
+        // но гарантирует, что превью получит видео.
+        var pathUnchanged = string.Equals(_syncedBackgroundVideoPath, desiredPath, StringComparison.OrdinalIgnoreCase);
+
+        System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] pathUnchanged={pathUnchanged}");
+        ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: pathUnchanged={pathUnchanged}");
+
+        if (pathUnchanged)
         {
-            System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] Path unchanged, returning");
-            ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: Path unchanged, returning");
+            System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] Path unchanged, setting video only for players without source");
+            ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: Path unchanged, setting video only for players without source");
+
+            // Устанавливаем видео только в плеерах без источника
             if (desiredPath is not null)
             {
                 foreach (var p in players)
                 {
-                    if (p?.MediaPlayer is not null)
+                    if (p?.Source is null && p?.MediaPlayer is not null)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] Setting source for player without source");
+                        ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: Setting source for player without source");
+                        var mediaPlayer = p.MediaPlayer ?? new MediaPlayer();
+                        mediaPlayer.IsLoopingEnabled = _viewModel.LoopBackgroundMedia;
+                        mediaPlayer.IsMuted = true;
+                        mediaPlayer.AutoPlay = true;
+                        mediaPlayer.CommandManager.IsEnabled = false;
+                        if (p.MediaPlayer is null)
+                        {
+                            p.SetMediaPlayer(mediaPlayer);
+                        }
+
+                        var storageFile = await global::Windows.Storage.StorageFile.GetFileFromPathAsync(desiredPath);
+                        p.Source = MediaSource.CreateFromStorageFile(storageFile);
+                        mediaPlayer.Play();
+                        System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] Source set and play called for player without source");
+                        ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: Source set and play called for player without source");
+                    }
+                    else if (p?.MediaPlayer is not null)
                     {
                         p.MediaPlayer.IsLoopingEnabled = _viewModel.LoopBackgroundMedia;
                     }

@@ -101,8 +101,13 @@ public sealed class HotkeyDispatcher : IDisposable
         var alt = (GetAsyncKeyState(VkMenu) & 0x8000) != 0;
         var shift = (GetAsyncKeyState(VkShift) & 0x8000) != 0;
 
+        System.Diagnostics.Debug.WriteLine($"[HotkeyDispatcher] Key pressed: vkCode={vkCode}, key={key}, ctrl={ctrl}, alt={alt}, shift={shift}");
+        ChyguiSlide.Data.InteractionLogger.Log($"HotkeyDispatcher.Key pressed: vkCode={vkCode}, key={key}, ctrl={ctrl}, alt={alt}, shift={shift}");
+
         if (!_hotkeyService.TryMatch(key, ctrl, alt, shift, out var action))
         {
+            System.Diagnostics.Debug.WriteLine($"[HotkeyDispatcher] No hotkey match found");
+            ChyguiSlide.Data.InteractionLogger.Log($"HotkeyDispatcher.No hotkey match found");
             return false;
         }
 
@@ -135,9 +140,16 @@ public sealed class HotkeyDispatcher : IDisposable
     {
         try
         {
+            System.Diagnostics.Debug.WriteLine($"[HotkeyDispatcher] DispatchAsync: action={action}");
+            ChyguiSlide.Data.InteractionLogger.Log($"HotkeyDispatcher.DispatchAsync: action={action}");
+
             if (action == AppHotkeyAction.FocusBibleSearch)
             {
+                System.Diagnostics.Debug.WriteLine($"[HotkeyDispatcher] FocusBibleSearch action detected");
+                ChyguiSlide.Data.InteractionLogger.Log($"HotkeyDispatcher.FocusBibleSearch action detected");
                 var main = _services.GetRequiredService<MainViewModel>();
+                System.Diagnostics.Debug.WriteLine($"[HotkeyDispatcher] IsOnCatalogPage={main.IsOnCatalogPage}, IsOnBiblePage={main.IsOnBiblePage}");
+                ChyguiSlide.Data.InteractionLogger.Log($"HotkeyDispatcher.IsOnCatalogPage={main.IsOnCatalogPage}, IsOnBiblePage={main.IsOnBiblePage}");
                 if (main.IsOnCatalogPage)
                 {
                     var catalog = _services.GetRequiredService<CatalogViewModel>();

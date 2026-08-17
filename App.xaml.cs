@@ -243,8 +243,10 @@ namespace ChyguiSlide
         private static IntPtr _mainWindowMinSizeProc;
         private static IntPtr _mainWindowOriginalWndProc;
         private static WndProc? _mainWindowMinSizeDelegate;
+        private static bool _skipCloseConfirmation = false;
         private const int GwlpWndProc = -4;
         private const uint WmGetMinMaxInfo = 0x0024;
+        private const uint WmClose = 0x0010;
         private const int MinWindowWidthDip = 960;
         private const int MinWindowHeightDip = 540;
 
@@ -278,6 +280,20 @@ namespace ChyguiSlide
                 info.ptMinTrackSize.x = (int)Math.Round(MinWindowWidthDip * scale);
                 info.ptMinTrackSize.y = (int)Math.Round(MinWindowHeightDip * scale);
                 Marshal.StructureToPtr(info, lParam, fDeleteOld: false);
+            }
+
+            if (msg == WmClose)
+            {
+                // Если флаг установлен, пропускаем закрытие без подтверждения
+                if (_skipCloseConfirmation)
+                {
+                    _skipCloseConfirmation = false;
+                    return CallWindowProc(_mainWindowOriginalWndProc, hWnd, msg, wParam, lParam);
+                }
+
+                // Перехватываем закрытие окна для показа диалога подтверждения
+                _ = ShowCloseConfirmationDialogAsync();
+                return IntPtr.Zero; // Блокируем закрытие
             }
 
             return CallWindowProc(_mainWindowOriginalWndProc, hWnd, msg, wParam, lParam);
@@ -323,6 +339,61 @@ namespace ChyguiSlide
 
         [DllImport("user32.dll")]
         private static extern uint GetDpiForWindow(IntPtr hwnd);
+
+        private static async Task ShowCloseConfirmationDialogAsync()
+        {
+            try
+            {
+                var displaySettingsService = AppHost.Services.GetService<IDisplaySettingsService>();
+                if (displaySettingsService == null)
+                {
+                    // Если сервис недоступен, просто закрываем окно
+                    _skipCloseConfirmation = true;
+                    PostMessage(MainWindowHandle, WmClose, IntPtr.Zero, IntPtr.Zero);
+                    return;
+                }
+
+                var askBeforeClose = await displaySettingsService.GetAskBeforeCloseAsync();
+                if (!askBeforeClose)
+                {
+                    // Если настройка выключена, просто закрываем окно
+                    _skipCloseConfirmation = true;
+                    PostMessage(MainWindowHandle, WmClose, IntPtr.Zero, IntPtr.Zero);
+                    return;
+                }
+
+                MainDispatcherQueue.TryEnqueue(async () =>
+                {
+                    var dialog = new Microsoft.UI.Xaml.Controls.ContentDialog
+                    {
+                        Title = "Закрытие приложения",
+                        Content = "Вы уверены, что хотите закрыть программу?",
+                        PrimaryButtonText = "Да",
+                        CloseButtonText = "Отмена",
+                        DefaultButton = Microsoft.UI.Xaml.Controls.ContentDialogButton.Close,
+                        XamlRoot = MainWindow.Content?.XamlRoot
+                    };
+
+                    var result = await dialog.ShowAsync();
+                    if (result == Microsoft.UI.Xaml.Controls.ContentDialogResult.Primary)
+                    {
+                        // Пользователь подтвердил закрытие - отправляем WM_CLOSE снова
+                        _skipCloseConfirmation = true;
+                        PostMessage(MainWindowHandle, WmClose, IntPtr.Zero, IntPtr.Zero);
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                LogToFile($"Ошибка при подтверждении закрытия: {ex.Message}");
+                // В случае ошибки просто закрываем окно
+                _skipCloseConfirmation = true;
+                PostMessage(MainWindowHandle, WmClose, IntPtr.Zero, IntPtr.Zero);
+            }
+        }
+
+        [DllImport("user32.dll")]
+        private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
 
         private static void OnMainWindowClosed(object sender, WindowEventArgs args)
         {
