@@ -1245,15 +1245,9 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
     {
         try
         {
-            System.Diagnostics.Debug.WriteLine($"LoadKeepProjectionBackgroundAsync: ENTER");
-            ChyguiSlide.Data.InteractionLogger.Log($"LoadKeepProjectionBackgroundAsync: ENTER");
             _suppressKeepProjectionBackgroundPersist = true;
             var value = await _displaySettingsService.GetKeepProjectionBackgroundAsync();
-            System.Diagnostics.Debug.WriteLine($"LoadKeepProjectionBackgroundAsync: loaded value={value}");
-            ChyguiSlide.Data.InteractionLogger.Log($"LoadKeepProjectionBackgroundAsync: loaded value={value}");
             KeepProjectionBackground = value;
-            System.Diagnostics.Debug.WriteLine($"LoadKeepProjectionBackgroundAsync: KeepProjectionBackground set to {value}");
-            ChyguiSlide.Data.InteractionLogger.Log($"LoadKeepProjectionBackgroundAsync: KeepProjectionBackground set to {value}");
         }
         catch (Exception ex)
         {
@@ -1267,11 +1261,6 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
 
     partial void OnKeepProjectionBackgroundChanged(bool value)
     {
-        var stackTrace = Environment.StackTrace;
-        System.Diagnostics.Debug.WriteLine($"OnKeepProjectionBackgroundChanged: value={value}, _suppressKeepProjectionBackgroundPersist={_suppressKeepProjectionBackgroundPersist}");
-        System.Diagnostics.Debug.WriteLine($"OnKeepProjectionBackgroundChanged: StackTrace:\n{stackTrace}");
-        ChyguiSlide.Data.InteractionLogger.Log($"OnKeepProjectionBackgroundChanged: value={value}, _suppressKeepProjectionBackgroundPersist={_suppressKeepProjectionBackgroundPersist}");
-        ChyguiSlide.Data.InteractionLogger.Log($"OnKeepProjectionBackgroundChanged: StackTrace:\n{stackTrace}");
         if (!_suppressKeepProjectionBackgroundPersist)
         {
             _ = PersistKeepProjectionBackgroundAsync(value);
@@ -1282,11 +1271,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
     {
         try
         {
-            System.Diagnostics.Debug.WriteLine($"PersistKeepProjectionBackgroundAsync: keep={keep}");
-            ChyguiSlide.Data.InteractionLogger.Log($"PersistKeepProjectionBackgroundAsync: keep={keep}");
             await _displaySettingsService.SetKeepProjectionBackgroundAsync(keep);
-            System.Diagnostics.Debug.WriteLine($"PersistKeepProjectionBackgroundAsync: SetKeepProjectionBackgroundAsync completed");
-            ChyguiSlide.Data.InteractionLogger.Log($"PersistKeepProjectionBackgroundAsync: SetKeepProjectionBackgroundAsync completed");
 
             if (keep)
             {
@@ -1301,16 +1286,10 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
                 {
                     await _projectionDisplayService.ShowAsync();
                 }
-
-                // При включении опции "Держать фон на экране" не устанавливаем флаг намеренного запуска
-                // Это только автоматическое открытие окна с фоном, не запуск трансляции
             }
             else
             {
                 // При выключении опции закрываем окно проекции
-                System.Diagnostics.Debug.WriteLine($"PersistKeepProjectionBackgroundAsync: KeepProjectionBackground disabled, closing projection");
-                ChyguiSlide.Data.InteractionLogger.Log($"PersistKeepProjectionBackgroundAsync: KeepProjectionBackground disabled, closing projection");
-
                 if (App.AppHost.Services.GetService(typeof(IProjectionStateService)) is IProjectionStateService state)
                 {
                     state.Clear();

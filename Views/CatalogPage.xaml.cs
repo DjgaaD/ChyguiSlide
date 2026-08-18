@@ -529,32 +529,19 @@ public sealed partial class CatalogPage : Page
 
     private async Task FocusSearchBoxIfRequestedAsync()
     {
-        System.Diagnostics.Debug.WriteLine($"[CatalogPage] FocusSearchBoxIfRequestedAsync called");
-        ChyguiSlide.Data.InteractionLogger.Log($"CatalogPage.FocusSearchBoxIfRequestedAsync called");
         if (!ViewModel.ConsumePendingSearchFocusRequest())
         {
-            System.Diagnostics.Debug.WriteLine($"[CatalogPage] ConsumePendingSearchFocusRequest returned false");
-            ChyguiSlide.Data.InteractionLogger.Log($"CatalogPage.ConsumePendingSearchFocusRequest returned false");
             return;
         }
 
-        System.Diagnostics.Debug.WriteLine($"[CatalogPage] Calling SearchBox.Focus with Keyboard state");
-        ChyguiSlide.Data.InteractionLogger.Log($"CatalogPage.Calling SearchBox.Focus with Keyboard state");
         await Task.Yield();
         SearchBox.Focus(FocusState.Keyboard);
-        System.Diagnostics.Debug.WriteLine($"[CatalogPage] SearchBox.Focus completed");
-        ChyguiSlide.Data.InteractionLogger.Log($"CatalogPage.SearchBox.Focus completed");
     }
 
     private async void OnSearchFocusRequested()
     {
-        System.Diagnostics.Debug.WriteLine($"[CatalogPage] OnSearchFocusRequested called, _isProcessingSearchFocus={_isProcessingSearchFocus}");
-        ChyguiSlide.Data.InteractionLogger.Log($"CatalogPage.OnSearchFocusRequested called, _isProcessingSearchFocus={_isProcessingSearchFocus}");
-
         if (_isProcessingSearchFocus)
         {
-            System.Diagnostics.Debug.WriteLine($"[CatalogPage] Already processing search focus, ignoring");
-            ChyguiSlide.Data.InteractionLogger.Log($"CatalogPage.Already processing search focus, ignoring");
             return;
         }
 
