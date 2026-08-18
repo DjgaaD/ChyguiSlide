@@ -253,11 +253,15 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
         DesignWidth = w;
         DesignHeight = h;
 
+        System.Diagnostics.Debug.WriteLine($"SyncDesignSurface: window={_windowWidth:F0}x{_windowHeight:F0}, display={_displayWidth}x{_displayHeight}, design={w:F0}x{h:F0}");
+
         // Поля как Margin="64" → 128 суммарно
         const double margin = 128;
         LayoutMaxWidth = TextLayoutMode == TextLayoutMode.ShrinkToFit
             ? Math.Max(200, w)
             : Math.Max(200, w - margin);
+
+        System.Diagnostics.Debug.WriteLine($"SyncDesignSurface: LayoutMaxWidth={LayoutMaxWidth:F0}, TextLayoutMode={TextLayoutMode}");
     }
 
     private async Task LoadDisplayResolutionAsync()
@@ -278,13 +282,21 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
                 System.Diagnostics.Debug.WriteLine($"LoadDisplayResolutionAsync: Экран не выбран, используем размер окна: {_displayWidth}x{_displayHeight}");
             }
 
+            // Fallback: если разрешение слишком маленькое или не определено, используем безопасные значения
+            if (_displayWidth < 800 || _displayHeight < 600)
+            {
+                System.Diagnostics.Debug.WriteLine($"LoadDisplayResolutionAsync: Разрешение слишком маленькое ({_displayWidth}x{_displayHeight}), используем 1920x1080");
+                _displayWidth = 1920;
+                _displayHeight = 1080;
+            }
+
             SyncDesignSurface();
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"LoadDisplayResolutionAsync: Ошибка: {ex.Message}");
-            _displayWidth = (int)_windowWidth;
-            _displayHeight = (int)_windowHeight;
+            _displayWidth = 1920;
+            _displayHeight = 1080;
             SyncDesignSurface();
         }
     }
