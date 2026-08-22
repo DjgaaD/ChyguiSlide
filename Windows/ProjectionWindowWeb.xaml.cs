@@ -69,8 +69,21 @@ public sealed partial class ProjectionWindowWeb : Window
         try
         {
             ChyguiSlide.Data.InteractionLogger.Log("[ProjectionWindowWeb] Starting WebView2 initialization...");
-            await WebView.EnsureCoreWebView2Async();
-            ChyguiSlide.Data.InteractionLogger.Log("[ProjectionWindowWeb] WebView2 initialized successfully");
+
+            // В Program Files рядом с exe писать нельзя — каталог профиля WebView2 в LocalAppData.
+            var userDataFolder = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "ChyguiSlide",
+                "WebView2");
+            Directory.CreateDirectory(userDataFolder);
+            // WinUI: CreateWithOptionsAsync — каталог профиля в LocalAppData (не рядом с exe в Program Files).
+            var environment = await CoreWebView2Environment.CreateWithOptionsAsync(
+                browserExecutableFolder: null,
+                userDataFolder: userDataFolder,
+                options: new CoreWebView2EnvironmentOptions());
+            await WebView.EnsureCoreWebView2Async(environment);
+            ChyguiSlide.Data.InteractionLogger.Log(
+                $"[ProjectionWindowWeb] WebView2 initialized successfully (userData={userDataFolder})");
 
             if (WebView.CoreWebView2 is not null)
             {

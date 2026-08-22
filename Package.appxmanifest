@@ -10,7 +10,7 @@
   <Identity
     Name="ChyguiSlide.Church.T9"
     Publisher="CN=ChyguiSlide"
-    Version="0.1.0.0" />
+    Version="0.1.1.0" />
 
   <mp:PhoneIdentity PhoneProductId="a198f82d-4f09-4da0-878b-2911f3ce5ffd" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 

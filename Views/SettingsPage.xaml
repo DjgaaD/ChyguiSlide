@@ -685,7 +685,7 @@
 
                     <!-- Логи -->
                     <StackPanel
-                        Spacing="16"
+                        Spacing="12"
                         Visibility="{Binding IsLogsSectionVisible, Converter={StaticResource BoolToVisibilityConverter}}">
                         <Border
                             Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
@@ -693,17 +693,52 @@
                             BorderThickness="1"
                             CornerRadius="12"
                             Padding="20">
-                            <StackPanel Spacing="16">
-                                <StackPanel Spacing="4">
-                                    <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Логи приложения" />
-                                    <TextBlock
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        TextWrapping="Wrap"
-                                        Text="Просмотр и сохранение логов приложения для диагностики проблем." />
-                                </StackPanel>
-                                <Button Content="Открыть окно логов" Click="OnOpenLogsClicked" />
+                            <StackPanel Spacing="8">
+                                <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Логи приложения" />
+                                <TextBlock
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    TextWrapping="Wrap"
+                                    Text="Просмотр и сохранение логов приложения для диагностики проблем." />
+                                <TextBlock
+                                    Text="{x:Bind LogsViewModel.StatusMessage, Mode=OneWay}"
+                                    Foreground="{ThemeResource SystemFillColorSuccessBrush}"
+                                    Visibility="{x:Bind LogsViewModel.StatusMessage, Mode=OneWay, Converter={StaticResource NullToVisibilityConverter}}" />
                             </StackPanel>
                         </Border>
+
+                        <Border
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="12"
+                            Padding="16">
+                            <ScrollViewer MaxHeight="480">
+                                <ItemsControl ItemsSource="{x:Bind LogsViewModel.Logs, Mode=OneWay}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock
+                                                Text="{Binding}"
+                                                FontFamily="Consolas,Courier New"
+                                                FontSize="12"
+                                                TextWrapping="Wrap"
+                                                Margin="0,0,0,4" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </Border>
+
+                        <StackPanel
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            Spacing="12">
+                            <Button
+                                Content="Очистить"
+                                Command="{x:Bind LogsViewModel.ClearCommand}"
+                                Style="{StaticResource AccentButtonStyle}" />
+                            <Button Content="Копировать" Command="{x:Bind LogsViewModel.CopyCommand}" />
+                            <Button Content="Сохранить в файл" Command="{x:Bind LogsViewModel.SaveCommand}" />
+                        </StackPanel>
                     </StackPanel>
 
                     <!-- О нас -->

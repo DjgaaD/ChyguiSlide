@@ -17,13 +17,15 @@ namespace ChyguiSlide.Views;
 public sealed partial class SettingsPage : Page
 {
     public ThemePresetEditorViewModel ViewModel { get; }
+    public LogsViewModel LogsViewModel { get; }
 
     private ContentDialog? _themeEditorDialog;
 
     public SettingsPage()
     {
-        InitializeComponent();
         ViewModel = App.AppHost.Services.GetRequiredService<ThemePresetEditorViewModel>();
+        LogsViewModel = App.AppHost.Services.GetRequiredService<LogsViewModel>();
+        InitializeComponent();
         DataContext = ViewModel;
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -312,29 +314,4 @@ public sealed partial class SettingsPage : Page
         }
     }
 
-    private async void OnOpenLogsClicked(object sender, RoutedEventArgs e)
-    {
-        var logsViewModel = App.AppHost.Services.GetRequiredService<LogsViewModel>();
-        var logsPage = new LogsPage
-        {
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Stretch
-        };
-
-        var dialog = new ContentDialog
-        {
-            Title = "Логи приложения",
-            Content = logsPage,
-            CloseButtonText = "Закрыть",
-            DefaultButton = ContentDialogButton.Close,
-            FullSizeDesired = true,
-            XamlRoot = XamlRoot
-        };
-
-        dialog.Resources["ContentDialogMaxWidth"] = 1200;
-        dialog.Resources["ContentDialogMinWidth"] = 800;
-        dialog.Resources["ContentDialogMaxHeight"] = 800;
-
-        await dialog.ShowAsync();
-    }
 }
