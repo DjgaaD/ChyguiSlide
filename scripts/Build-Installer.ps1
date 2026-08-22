@@ -84,8 +84,9 @@ $utf8Bom = New-Object System.Text.UTF8Encoding $true
 function ConvertToInnoUnicode($str) {
     $result = New-Object System.Text.StringBuilder
     foreach ($char in $str.ToCharArray()) {
-        if ($char -ge 128) {
-            $result.Append("#{0:X4}" -f [int]$char) | Out-Null
+        $code = [int]$char
+        if ($code -ge 128) {
+            $result.Append("#{0:X4}" -f $code) | Out-Null
         } else {
             $result.Append($char) | Out-Null
         }
