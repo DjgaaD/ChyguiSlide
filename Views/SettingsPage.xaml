@@ -715,6 +715,29 @@
                         </Border>
                     </StackPanel>
 
+                    <!-- Логи -->
+                    <StackPanel
+                        Spacing="16"
+                        Visibility="{Binding IsLogsSectionVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Border
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="12"
+                            Padding="20">
+                            <StackPanel Spacing="16">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Логи приложения" />
+                                    <TextBlock
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        TextWrapping="Wrap"
+                                        Text="Просмотр и сохранение логов приложения для диагностики проблем." />
+                                </StackPanel>
+                                <Button Content="Открыть окно логов" Click="OnOpenLogsClicked" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
                     <!-- О нас -->
                     <StackPanel
                         Spacing="16"

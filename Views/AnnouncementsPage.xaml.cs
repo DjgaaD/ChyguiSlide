@@ -14,6 +14,7 @@ public sealed partial class AnnouncementsPage : Page
     public AnnouncementsViewModel ViewModel { get; }
     private AnnouncementEditorViewModel? _editorViewModel;
     private ContentDialog? _editorDialog;
+    private static bool _initializedOnce;
 
     public AnnouncementsPage()
     {
@@ -24,22 +25,21 @@ public sealed partial class AnnouncementsPage : Page
 
     private async void OnPageLoaded(object sender, RoutedEventArgs e)
     {
-        await ViewModel.InitializeAsync();
-        if (string.IsNullOrWhiteSpace(SearchBox.Text) && !string.IsNullOrWhiteSpace(ViewModel.SearchTerm))
+        // Инициализируем только один раз при первом запуске
+        if (!_initializedOnce)
         {
-            await ViewModel.SearchCommand.ExecuteAsync(null);
+            _initializedOnce = true;
+            await ViewModel.InitializeAsync();
         }
-        else if (!string.IsNullOrWhiteSpace(ViewModel.SearchTerm))
-        {
-            SearchBox.Text = ViewModel.SearchTerm;
-        }
+        // Не синхронизируем поиск при загрузке, чтобы избежать мигания при навигации
     }
 
     protected override void OnNavigatedFrom(Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
     {
         base.OnNavigatedFrom(e);
-        SearchBox.Text = string.Empty;
-        _ = ViewModel.SearchCommand.ExecuteAsync(null);
+        // Не очищаем поиск при уходе со страницы, чтобы избежать мигания при навигации
+        // SearchBox.Text = string.Empty;
+        // _ = ViewModel.SearchCommand.ExecuteAsync(null);
     }
 
     private async void OnSearchBoxQuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
@@ -98,17 +98,59 @@ public sealed partial class AnnouncementsPage : Page
 
     private async void OnQuickAnnouncementClicked(object sender, RoutedEventArgs e)
     {
-        var typeCombo = new ComboBox
+        var manualRadio = new RadioButton
         {
-            Header = "Тип объявления",
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            ItemsSource = new[]
+            GroupName = "AnnouncementType",
+            Content = "Ручное",
+            IsChecked = true
+        };
+
+        var removeCarRadio = new RadioButton
+        {
+            GroupName = "AnnouncementType",
+            Content = "Убрать автомобиль"
+        };
+
+        // Применяем стиль SegmentedRadioStyle если он доступен
+        if (Application.Current.Resources.TryGetValue("SegmentedRadioStyle", out var radioStyle))
+        {
+            manualRadio.Style = radioStyle as Style;
+            removeCarRadio.Style = radioStyle as Style;
+        }
+
+        var typeGrid = new Grid
+        {
+            ColumnDefinitions =
             {
-                new QuickAnnouncementTypeOption("manual", "Ручное"),
-                new QuickAnnouncementTypeOption("remove_car", "Убрать автомобиль")
-            },
-            DisplayMemberPath = nameof(QuickAnnouncementTypeOption.Title),
-            SelectedIndex = 0
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }
+            }
+        };
+
+        Grid.SetColumn(manualRadio, 0);
+        Grid.SetColumn(removeCarRadio, 1);
+
+        typeGrid.Children.Add(manualRadio);
+        typeGrid.Children.Add(removeCarRadio);
+
+        var segmentedTrack = new Border();
+        if (Application.Current.Resources.TryGetValue("SegmentedTrackStyle", out var trackStyle))
+        {
+            segmentedTrack.Style = trackStyle as Style;
+        }
+        segmentedTrack.Child = typeGrid;
+
+        var typeHeader = new TextBlock
+        {
+            Text = "Тип объявления",
+            Foreground = ThemeBrushHelper.Get("TextFillColorSecondaryBrush"),
+            Margin = new Thickness(0, 0, 0, 8)
+        };
+
+        var typeContainer = new StackPanel
+        {
+            Spacing = 8,
+            Children = { typeHeader, segmentedTrack }
         };
 
         var plateBox = new TextBox
@@ -138,7 +180,7 @@ public sealed partial class AnnouncementsPage : Page
 
         void SyncTypeUi()
         {
-            var isRemoveCar = typeCombo.SelectedItem is QuickAnnouncementTypeOption { Id: "remove_car" };
+            var isRemoveCar = removeCarRadio.IsChecked == true;
             plateBox.Visibility = isRemoveCar ? Visibility.Visible : Visibility.Collapsed;
             contentBox.Visibility = isRemoveCar ? Visibility.Collapsed : Visibility.Visible;
             previewText.Visibility = isRemoveCar ? Visibility.Visible : Visibility.Collapsed;
@@ -157,7 +199,8 @@ public sealed partial class AnnouncementsPage : Page
                 : $"Просьба убрать автомобиль госномер: {plate}";
         }
 
-        typeCombo.SelectionChanged += (_, _) => SyncTypeUi();
+        manualRadio.Checked += (_, _) => SyncTypeUi();
+        removeCarRadio.Checked += (_, _) => SyncTypeUi();
 
         plateBox.BeforeTextChanging += (sender, args) =>
         {
@@ -190,23 +233,44 @@ public sealed partial class AnnouncementsPage : Page
         plateBox.TextChanged += (_, _) => UpdateRemoveCarPreview();
         SyncTypeUi();
 
+        // Используем Grid с фиксированной высотой, чтобы окно не меняло размер при переключении
+        var grid = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition { Height = GridLength.Auto },
+                new RowDefinition { Height = GridLength.Auto },
+                new RowDefinition { Height = GridLength.Auto },
+                new RowDefinition { Height = GridLength.Auto },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }
+            }
+        };
+
+        var infoText = new TextBlock
+        {
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = ThemeBrushHelper.Get("TextFillColorSecondaryBrush"),
+            Text = "Сразу выводит текст на экран. Чтобы сохранить объявление — используйте «Добавить»."
+        };
+        Grid.SetRow(infoText, 0);
+
+        Grid.SetRow(typeContainer, 1);
+        Grid.SetRow(plateBox, 2);
+        Grid.SetRow(previewText, 3);
+        Grid.SetRow(contentBox, 4);
+
+        grid.Children.Add(infoText);
+        grid.Children.Add(typeContainer);
+        grid.Children.Add(plateBox);
+        grid.Children.Add(previewText);
+        grid.Children.Add(contentBox);
+
         var panel = new StackPanel
         {
             Spacing = 12,
             MinWidth = 420,
-            Children =
-            {
-                new TextBlock
-                {
-                    TextWrapping = TextWrapping.Wrap,
-                    Foreground = ThemeBrushHelper.Get("TextFillColorSecondaryBrush"),
-                    Text = "Сразу выводит текст на экран. Чтобы сохранить объявление — используйте «Добавить»."
-                },
-                typeCombo,
-                plateBox,
-                previewText,
-                contentBox
-            }
+            MinHeight = 320,
+            Children = { grid }
         };
 
         var dialog = new ContentDialog
@@ -225,7 +289,7 @@ public sealed partial class AnnouncementsPage : Page
         }
 
         string content;
-        if (typeCombo.SelectedItem is QuickAnnouncementTypeOption { Id: "remove_car" })
+        if (removeCarRadio.IsChecked == true)
         {
             var plate = (plateBox.Text ?? string.Empty).Trim();
             if (string.IsNullOrWhiteSpace(plate))
@@ -249,8 +313,6 @@ public sealed partial class AnnouncementsPage : Page
 
         await ViewModel.ShowQuickAsync(content);
     }
-
-    private sealed record QuickAnnouncementTypeOption(string Id, string Title);
 
     private async Task OpenEditorDialogAsync(bool createNew)
     {

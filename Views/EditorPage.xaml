@@ -89,6 +89,12 @@
                                 <TextBlock Text="Припев после куплетов" VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>
+                        <Button Command="{Binding SectionContentToSingleLineCommand}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <icons:LucideIcon Kind="align-left" Size="16" VerticalAlignment="Center" />
+                                <TextBlock Text="Текст в одну строку" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
                     </StackPanel>
 
                     <Grid ColumnSpacing="16" MinHeight="480">

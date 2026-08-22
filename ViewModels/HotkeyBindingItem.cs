@@ -74,6 +74,7 @@ public enum SettingsSection
     Themes,
     Hotkeys,
     Backup,
+    Logs,
     About
 }
 

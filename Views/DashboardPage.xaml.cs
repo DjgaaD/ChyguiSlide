@@ -8,6 +8,7 @@ namespace ChyguiSlide.Views;
 public sealed partial class DashboardPage : Page
 {
     public DashboardViewModel ViewModel { get; }
+    private static bool _initializedOnce;
 
     public DashboardPage()
     {
@@ -18,6 +19,11 @@ public sealed partial class DashboardPage : Page
 
     private async void OnPageLoaded(object sender, RoutedEventArgs e)
     {
-        await ViewModel.InitializeAsync();
+        // Инициализируем только один раз при первом запуске
+        if (!_initializedOnce)
+        {
+            _initializedOnce = true;
+            await ViewModel.InitializeAsync();
+        }
     }
 }

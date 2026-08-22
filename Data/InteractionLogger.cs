@@ -6,6 +6,12 @@ namespace ChyguiSlide.Data;
 internal static class InteractionLogger
 {
     private static readonly object _lock = new object();
+    private static Action<string>? _uiLoggerCallback;
+
+    public static void SetUiLoggerCallback(Action<string>? callback)
+    {
+        _uiLoggerCallback = callback;
+    }
 
     public static void Log(string message)
     {
@@ -29,6 +35,9 @@ internal static class InteractionLogger
                     // Игнорируем ошибки записи в папку проекта
                 }
             }
+
+            // Дублируем в UI логгер
+            _uiLoggerCallback?.Invoke(message);
         }
         catch
         {

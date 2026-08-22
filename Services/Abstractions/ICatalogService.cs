@@ -7,7 +7,11 @@ namespace ChyguiSlide.Services.Abstractions;
 public interface ICatalogService
 {
     Task<IReadOnlyList<Song>> GetSongsAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Song>> GetSongsLiteAsync(CancellationToken cancellationToken = default);
+    Task<(IReadOnlyList<Song> Songs, int TotalCount)> GetSongsLitePagedAsync(int skip, int take, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Song>> SearchSongsAsync(string query, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Song>> SearchSongsLiteAsync(string query, CancellationToken cancellationToken = default);
+    Task<(IReadOnlyList<Song> Songs, int TotalCount)> SearchSongsLitePagedAsync(string query, int skip, int take, CancellationToken cancellationToken = default);
     Task<Song?> GetSongAsync(Guid id, CancellationToken cancellationToken = default);
     Task<Song> UpsertSongAsync(Song song, CancellationToken cancellationToken = default);
     Task RemoveSongAsync(Guid id, CancellationToken cancellationToken = default);
@@ -35,6 +39,8 @@ public interface ICatalogService
     Task<SongCollection> UpsertSongCollectionAsync(SongCollection collection, CancellationToken cancellationToken = default);
     Task RemoveSongCollectionAsync(Guid id, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Song>> GetSongsByCollectionAsync(Guid? collectionId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Song>> GetSongsByCollectionLiteAsync(Guid? collectionId, CancellationToken cancellationToken = default);
+    Task<(IReadOnlyList<Song> Songs, int TotalCount)> GetSongsByCollectionLitePagedAsync(Guid? collectionId, int skip, int take, CancellationToken cancellationToken = default);
 
     Task RecordSongPlayAsync(Guid songId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<TopSongStat>> GetTopSongsAsync(int take = 30, Guid? collectionId = null, CancellationToken cancellationToken = default);

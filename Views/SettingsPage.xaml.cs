@@ -304,4 +304,30 @@ public sealed partial class SettingsPage : Page
             await ViewModel.RestoreYandexBackupCommand.ExecuteAsync(null);
         }
     }
+
+    private async void OnOpenLogsClicked(object sender, RoutedEventArgs e)
+    {
+        var logsViewModel = App.AppHost.Services.GetRequiredService<LogsViewModel>();
+        var logsPage = new LogsPage
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch
+        };
+
+        var dialog = new ContentDialog
+        {
+            Title = "Логи приложения",
+            Content = logsPage,
+            CloseButtonText = "Закрыть",
+            DefaultButton = ContentDialogButton.Close,
+            FullSizeDesired = true,
+            XamlRoot = XamlRoot
+        };
+
+        dialog.Resources["ContentDialogMaxWidth"] = 1200;
+        dialog.Resources["ContentDialogMinWidth"] = 800;
+        dialog.Resources["ContentDialogMaxHeight"] = 800;
+
+        await dialog.ShowAsync();
+    }
 }

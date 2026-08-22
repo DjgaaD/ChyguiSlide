@@ -15,8 +15,9 @@ namespace ChyguiSlide.Views;
 public sealed partial class LiveControlPage : Page
 {
     public LiveControlViewModel ViewModel { get; }
-    
+
     private IProjectionDisplayService? _projectionDisplayService;
+    private static bool _projectionMirrorInitialized;
 
     public LiveControlPage()
     {
@@ -35,9 +36,13 @@ public sealed partial class LiveControlPage : Page
         // выставляет SelectedItem → ShowSongSections → пересборка слайда → мерцание видеофона.
         await ViewModel.InitializeAsync();
         ScrollCurrentSectionIntoView();
-        
-        // Инициализация зеркалирования экрана проекции
-        InitializeProjectionMirror();
+
+        // Инициализация зеркалирования экрана проекции только один раз
+        if (!_projectionMirrorInitialized)
+        {
+            _projectionMirrorInitialized = true;
+            InitializeProjectionMirror();
+        }
     }
 
     protected override void OnNavigatedTo(Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)

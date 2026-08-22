@@ -317,8 +317,8 @@ public partial class CatalogViewModel : ObservableRecipient
 
         Func<Task<IReadOnlyList<Song>>> loader = filter.Kind switch
         {
-            CollectionFilterKind.Specific => () => _catalogService.GetSongsByCollectionAsync(filter.CollectionId),
-            _ => () => _catalogService.GetSongsAsync()
+            CollectionFilterKind.Specific => () => _catalogService.GetSongsByCollectionLiteAsync(filter.CollectionId),
+            _ => () => _catalogService.GetSongsLiteAsync()
         };
 
         await LoadInternalAsync(async () =>
@@ -335,8 +335,8 @@ public partial class CatalogViewModel : ObservableRecipient
 
     private async Task<IReadOnlyList<Song>> FilterBySearchAsync(IReadOnlyList<Song> source, string query)
     {
-        // Полный поиск (название, куплеты и т.д.) через сервис, затем сужение по сборнику.
-        var found = await _catalogService.SearchSongsAsync(query);
+        // Быстрый поиск только по основным полям без секций
+        var found = await _catalogService.SearchSongsLiteAsync(query);
         if ((SelectedCollectionFilter?.Kind ?? CollectionFilterKind.All) == CollectionFilterKind.All)
         {
             return found;

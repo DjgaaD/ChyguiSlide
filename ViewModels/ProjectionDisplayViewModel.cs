@@ -966,6 +966,12 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
         System.Diagnostics.Debug.WriteLine(
             $"RefreshLines: FontWeight={FontWeight.Weight}, Lines={lines.Count}, Mode={TextLayoutMode}, Design={DesignWidth:F0}x{DesignHeight:F0}");
 
+        // Логируем исходные строки для диагностики объявлений
+        if (lines.Count > 0)
+        {
+            System.Diagnostics.Debug.WriteLine($"RefreshLines: First line length={lines[0]?.Length ?? 0}, content=\"{lines[0]?.Substring(0, Math.Min(50, lines[0]?.Length ?? 0))}\"");
+        }
+
         if (lines.Count == 0)
         {
             DisplayFontSize = 100;
@@ -1074,6 +1080,8 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
         var captionReserve = EstimateReferenceCaptionReserve();
         var availableHeight = Math.Max(120, (DesignHeight - 128 - captionReserve) * 0.94);
 
+        System.Diagnostics.Debug.WriteLine($"LayoutSlideForMaxFontWithSize: availableWidth={availableWidth:F0}, availableHeight={availableHeight:F0}, captionReserve={captionReserve:F0}");
+
         var prepared = sourceLines
             .Select(l => (l ?? string.Empty).Trim())
             .Where(l => l.Length > 0)
@@ -1081,12 +1089,16 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
             .Where(w => w.Count > 0)
             .ToList();
 
+        System.Diagnostics.Debug.WriteLine($"LayoutSlideForMaxFontWithSize: sourceLines.Count={sourceLines.Count}, prepared.Count={prepared.Count}");
+
         if (prepared.Count == 0)
         {
             return (sourceLines.ToList(), 100);
         }
 
         var longestWord = prepared.SelectMany(w => w).OrderByDescending(w => w.Length).First();
+        System.Diagnostics.Debug.WriteLine($"LayoutSlideForMaxFontWithSize: longestWord length={longestWord.Length}, word=\"{longestWord}\"");
+
         double lo = 8;
         double hi = Math.Min(availableWidth, availableHeight);
 
@@ -1095,6 +1107,8 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
         {
             hi = Math.Min(hi, availableWidth * 100.0 / wordWidthAt100);
         }
+
+        System.Diagnostics.Debug.WriteLine($"LayoutSlideForMaxFontWithSize: wordWidthAt100={wordWidthAt100:F1}, initial hi={hi:F1}");
 
         List<string> bestLayout = WrapSourceLinesAtFontSize(prepared, availableWidth, lo);
         var bestSize = lo;

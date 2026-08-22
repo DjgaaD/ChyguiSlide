@@ -53,6 +53,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
             new SettingsNavItem("Стили", "palette", SettingsSection.Themes),
             new SettingsNavItem("Горячие клавиши", "keyboard", SettingsSection.Hotkeys),
             new SettingsNavItem("Резервные копии", "cloud-upload", SettingsSection.Backup),
+            new SettingsNavItem("Логи", "file-text", SettingsSection.Logs),
             new SettingsNavItem("О нас", "info", SettingsSection.About),
         });
 
@@ -73,6 +74,9 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
 
     [ObservableProperty]
     private bool isHotkeysSectionVisible;
+
+    [ObservableProperty]
+    private bool isLogsSectionVisible;
 
     [ObservableProperty]
     private ThemePreset? selectedPreset;
@@ -602,6 +606,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         IsThemesSectionVisible = section == SettingsSection.Themes;
         IsHotkeysSectionVisible = section == SettingsSection.Hotkeys;
         IsBackupSectionVisible = section == SettingsSection.Backup;
+        IsLogsSectionVisible = section == SettingsSection.Logs;
         IsAboutSectionVisible = section == SettingsSection.About;
         if (section == SettingsSection.Backup)
         {

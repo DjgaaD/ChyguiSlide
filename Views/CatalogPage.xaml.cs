@@ -19,6 +19,7 @@ public sealed partial class CatalogPage : Page
     private SongEditorViewModel? _editorViewModel;
     private ContentDialog? _editorDialog;
     private bool _isProcessingSearchFocus;
+    private static bool _initializedOnce;
 
     public CatalogPage()
     {
@@ -30,16 +31,21 @@ public sealed partial class CatalogPage : Page
 
     private async void OnPageLoaded(object sender, RoutedEventArgs e)
     {
-        await ViewModel.InitializeAsync();
-        // Поле поиска в новой странице пустое — синхронизируем фильтр, иначе остаются старые результаты
-        if (string.IsNullOrWhiteSpace(SearchBox.Text) && !string.IsNullOrWhiteSpace(ViewModel.SearchTerm))
+        // Инициализируем только один раз при первом запуске
+        if (!_initializedOnce)
         {
-            await ViewModel.SearchCommand.ExecuteAsync(null);
+            _initializedOnce = true;
+            await ViewModel.InitializeAsync();
         }
-        else if (!string.IsNullOrWhiteSpace(ViewModel.SearchTerm))
-        {
-            SearchBox.Text = ViewModel.SearchTerm;
-        }
+        // Не синхронизируем поиск при загрузке, чтобы избежать мигания при навигации
+        // if (string.IsNullOrWhiteSpace(SearchBox.Text) && !string.IsNullOrWhiteSpace(ViewModel.SearchTerm))
+        // {
+        //     await ViewModel.SearchCommand.ExecuteAsync(null);
+        // }
+        // else if (!string.IsNullOrWhiteSpace(ViewModel.SearchTerm))
+        // {
+        //     SearchBox.Text = ViewModel.SearchTerm;
+        // }
 
         await FocusSearchBoxIfRequestedAsync();
     }
@@ -47,8 +53,9 @@ public sealed partial class CatalogPage : Page
     protected override void OnNavigatedFrom(Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
     {
         base.OnNavigatedFrom(e);
-        SearchBox.Text = string.Empty;
-        _ = ViewModel.SearchCommand.ExecuteAsync(null);
+        // Не очищаем поиск при уходе со страницы, чтобы избежать мигания при навигации
+        // SearchBox.Text = string.Empty;
+        // _ = ViewModel.SearchCommand.ExecuteAsync(null);
         ViewModel.SearchFocusRequested -= OnSearchFocusRequested;
     }
 

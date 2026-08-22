@@ -40,6 +40,36 @@ public class CatalogService(AppDbContext dbContext) : ICatalogService
             .ToList();
     }
 
+    public async Task<IReadOnlyList<Song>> GetSongsLiteAsync(CancellationToken cancellationToken = default)
+    {
+        // Загружаем только базовую информацию без секций для быстрого отображения списка
+        var songs = await _dbContext.Songs
+            .Include(song => song.Collection)
+            .OrderBy(song => song.Title)
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
+
+        return songs;
+    }
+
+    public async Task<(IReadOnlyList<Song> Songs, int TotalCount)> GetSongsLitePagedAsync(int skip, int take, CancellationToken cancellationToken = default)
+    {
+        var query = _dbContext.Songs
+            .Include(song => song.Collection)
+            .AsNoTracking()
+            .AsQueryable();
+
+        var totalCount = await query.CountAsync(cancellationToken);
+
+        var songs = await query
+            .OrderBy(song => song.Title)
+            .Skip(skip)
+            .Take(take)
+            .ToListAsync(cancellationToken);
+
+        return (songs, totalCount);
+    }
+
     public async Task<IReadOnlyList<Song>> SearchSongsAsync(string query, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(query))
@@ -87,6 +117,119 @@ public class CatalogService(AppDbContext dbContext) : ICatalogService
             .ToList();
 
         return filtered;
+    }
+
+    public async Task<IReadOnlyList<Song>> SearchSongsLiteAsync(string query, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return await GetSongsLiteAsync(cancellationToken);
+        }
+
+        var normalizedQuery = NormalizeText(query);
+        if (string.IsNullOrWhiteSpace(normalizedQuery))
+        {
+            return await GetSongsLiteAsync(cancellationToken);
+        }
+
+        // Чистый номер — поиск по номеру песни
+        var isNumberOnly = int.TryParse(normalizedQuery, out var parsedNumber);
+
+        var songs = await _dbContext.Songs
+            .Include(song => song.Collection)
+            .AsNoTracking()
+            .ToListAsync(cancellationToken);
+
+        var filtered = songs
+            .Where(song =>
+            {
+                if (isNumberOnly)
+                {
+                    return song.Number == parsedNumber;
+                }
+
+                // Поиск только по основным полям без секций для скорости
+                if (!string.IsNullOrWhiteSpace(song.Title) && MatchesPhrase(NormalizeText(song.Title), normalizedQuery))
+                {
+                    return true;
+                }
+
+                if (!string.IsNullOrWhiteSpace(song.Subtitle) && MatchesPhrase(NormalizeText(song.Subtitle), normalizedQuery))
+                {
+                    return true;
+                }
+
+                return false;
+            })
+            .OrderBy(song => song.Title)
+            .ToList();
+
+        return filtered;
+    }
+
+    public async Task<(IReadOnlyList<Song> Songs, int TotalCount)> SearchSongsLitePagedAsync(string query, int skip, int take, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return await GetSongsLitePagedAsync(skip, take, cancellationToken);
+        }
+
+        var normalizedQuery = NormalizeText(query);
+        if (string.IsNullOrWhiteSpace(normalizedQuery))
+        {
+            return await GetSongsLitePagedAsync(skip, take, cancellationToken);
+        }
+
+        // Чистый номер — поиск по номеру песни
+        var isNumberOnly = int.TryParse(normalizedQuery, out var parsedNumber);
+
+        var queryable = _dbContext.Songs
+            .Include(song => song.Collection)
+            .AsNoTracking()
+            .AsQueryable();
+
+        // Фильтрация
+        if (isNumberOnly)
+        {
+            queryable = queryable.Where(song => song.Number == parsedNumber);
+        }
+        else
+        {
+            // Поиск только по основным полям без секций для скорости
+            // Для пагинации используем более простой подход - фильтрация в памяти после загрузки
+            // Это не идеально для очень больших баз, но работает для типичных случаев
+            var allSongs = await queryable.ToListAsync(cancellationToken);
+            var filtered = allSongs
+                .Where(song =>
+                {
+                    if (!string.IsNullOrWhiteSpace(song.Title) && MatchesPhrase(NormalizeText(song.Title), normalizedQuery))
+                    {
+                        return true;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(song.Subtitle) && MatchesPhrase(NormalizeText(song.Subtitle), normalizedQuery))
+                    {
+                        return true;
+                    }
+
+                    return false;
+                })
+                .OrderBy(song => song.Title)
+                .ToList();
+
+            var totalCount = filtered.Count;
+            var pagedSongs = filtered.Skip(skip).Take(take).ToList();
+            return (pagedSongs, totalCount);
+        }
+
+        var totalCountFiltered = await queryable.CountAsync(cancellationToken);
+        var songs = await queryable
+            .OrderBy(song => song.Title)
+            .Skip(skip)
+            .Take(take)
+            .ToListAsync(cancellationToken);
+
+        return (songs, totalCountFiltered);
     }
 
     private static bool SongMatchesPhrase(Song song, string normalizedQuery)
@@ -963,6 +1106,48 @@ public class CatalogService(AppDbContext dbContext) : ICatalogService
                 return song;
             })
             .ToList();
+    }
+
+    public async Task<IReadOnlyList<Song>> GetSongsByCollectionLiteAsync(Guid? collectionId, CancellationToken cancellationToken = default)
+    {
+        var query = _dbContext.Songs
+            .Include(song => song.Collection)
+            .AsNoTracking()
+            .AsQueryable();
+
+        query = collectionId is null
+            ? query.Where(s => s.CollectionId == null)
+            : query.Where(s => s.CollectionId == collectionId);
+
+        var songs = await query
+            .OrderBy(s => s.Number ?? int.MaxValue)
+            .ThenBy(s => s.Title)
+            .ToListAsync(cancellationToken);
+
+        return songs;
+    }
+
+    public async Task<(IReadOnlyList<Song> Songs, int TotalCount)> GetSongsByCollectionLitePagedAsync(Guid? collectionId, int skip, int take, CancellationToken cancellationToken = default)
+    {
+        var query = _dbContext.Songs
+            .Include(song => song.Collection)
+            .AsNoTracking()
+            .AsQueryable();
+
+        query = collectionId is null
+            ? query.Where(s => s.CollectionId == null)
+            : query.Where(s => s.CollectionId == collectionId);
+
+        var totalCount = await query.CountAsync(cancellationToken);
+
+        var songs = await query
+            .OrderBy(s => s.Number ?? int.MaxValue)
+            .ThenBy(s => s.Title)
+            .Skip(skip)
+            .Take(take)
+            .ToListAsync(cancellationToken);
+
+        return (songs, totalCount);
     }
 
     public async Task RecordSongPlayAsync(Guid songId, CancellationToken cancellationToken = default)

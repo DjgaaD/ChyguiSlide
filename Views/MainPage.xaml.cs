@@ -175,7 +175,8 @@ public sealed partial class MainPage : Page
 
         if (item is not null)
         {
-            NavigateToSelection(item, args.RecommendedNavigationTransitionInfo);
+            // Используем SuppressNavigationTransitionInfo для всех переходов, чтобы избежать мигания
+            NavigateToSelection(item, new SuppressNavigationTransitionInfo());
         }
     }
 
@@ -186,12 +187,13 @@ public sealed partial class MainPage : Page
             return;
         }
 
+        var transition = transitionInfo ?? new SuppressNavigationTransitionInfo();
+
+        // Сначала меняем SelectedItem, потом навигируем
         if (!ReferenceEquals(ShellNav.SelectedItem, item))
         {
             ShellNav.SelectedItem = item;
         }
-
-        var transition = transitionInfo ?? new SuppressNavigationTransitionInfo();
 
         if (ContentFrame.CurrentSourcePageType != item.PageType)
         {

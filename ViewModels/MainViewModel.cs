@@ -61,4 +61,14 @@ public partial class MainViewModel : ObservableObject
             SelectedItem = catalogItem;
         }
     }
+
+    public void NavigateToLogs()
+    {
+        // LogsPage is not in the main navigation, so we need to navigate to Settings first
+        var settingsItem = NavigationItems.FirstOrDefault(i => i.PageType == typeof(Views.SettingsPage));
+        if (settingsItem is not null)
+        {
+            SelectedItem = settingsItem;
+        }
+    }
 }

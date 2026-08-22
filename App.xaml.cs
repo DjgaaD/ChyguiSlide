@@ -28,6 +28,9 @@ namespace ChyguiSlide
     public partial class App : Application
     {
         private Window? window;
+
+        [DllImport("user32.dll")]
+        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
         public static Window MainWindow { get; private set; } = null!;
         public static IntPtr MainWindowHandle { get; private set; }
         public static IHost AppHost { get; private set; } = null!;
@@ -68,6 +71,13 @@ namespace ChyguiSlide
                 {
                     // Создаём начальную запись в interaction.log, чтобы файл гарантированно существовал
                     ChyguiSlide.Data.InteractionLogger.Log("Interaction logging initialized");
+
+                    // Настраиваем дублирование логов в UI логгер
+                    var loggingService = AppHost.Services.GetService<ILoggingService>();
+                    if (loggingService is not null)
+                    {
+                        ChyguiSlide.Data.InteractionLogger.SetUiLoggerCallback(loggingService.Log);
+                    }
                 }
                 catch
                 {
@@ -123,6 +133,17 @@ namespace ChyguiSlide
                 MainWindowHandle = WindowNative.GetWindowHandle(window);
                 window.Closed += OnMainWindowClosed;
                 LogToFile($"Главное окно создано, Handle: {MainWindowHandle}");
+
+                // Устанавливаем окно в развёрнутый режим
+                var windowId = Win32Interop.GetWindowIdFromWindow(MainWindowHandle);
+                var appWindow = AppWindow.GetFromWindowId(windowId);
+                if (appWindow is not null)
+                {
+                    appWindow.SetPresenter(AppWindowPresenterKind.Overlapped);
+                    var hwnd = MainWindowHandle;
+                    ShowWindow(hwnd, 3); // SW_MAXIMIZE = 3
+                    LogToFile("Главное окно установлено в развёрнутый режим");
+                }
 
                 if (window.DispatcherQueue is DispatcherQueue dispatcherQueue)
                 {
@@ -409,6 +430,12 @@ namespace ChyguiSlide
                 if (AppHost.Services.GetService(typeof(HotkeyDispatcher)) is HotkeyDispatcher hotkeys)
                 {
                     hotkeys.Dispose();
+                }
+
+                // Очищаем логи при закрытии приложения
+                if (AppHost.Services.GetService(typeof(ILoggingService)) is ILoggingService loggingService)
+                {
+                    loggingService.Clear();
                 }
 
                 try
@@ -1090,6 +1117,7 @@ namespace ChyguiSlide
                     
                     services.AddSingleton<IProjectionDisplayService, ProjectionDisplayService>();
                     services.AddSingleton<IBibleService, BibleService>();
+                    services.AddSingleton<ILoggingService, LoggingService>();
                     services.AddSingleton<MainViewModel>();
                     services.AddSingleton<CatalogViewModel>();
                     services.AddSingleton<BibleViewModel>();
@@ -1100,6 +1128,7 @@ namespace ChyguiSlide
                     services.AddSingleton<AnnouncementEditorViewModel>();
                     services.AddSingleton<SongEditorViewModel>();
                     services.AddSingleton<ProjectionDisplayViewModel>();
+                    services.AddSingleton<LogsViewModel>();
                     services.AddSingleton<IYandexDiskService, YandexDiskService>();
                     services.AddSingleton<ICatalogBackupService, CatalogBackupService>();
                     services.AddSingleton<IThemeBackgroundMediaService, ThemeBackgroundMediaService>();

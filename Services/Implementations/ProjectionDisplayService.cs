@@ -1569,20 +1569,12 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
             _window.SystemBackdrop = null;
         }
 
-        appWindow.SetPresenter(AppWindowPresenterKind.Overlapped);
-        if (appWindow.Presenter is OverlappedPresenter presenter)
-        {
-            presenter.SetBorderAndTitleBar(false, false);
-            presenter.IsAlwaysOnTop = true;
-            presenter.IsResizable = false;
-            presenter.IsMaximizable = false;
-            presenter.IsMinimizable = false;
-        }
+        // Используем FullScreen presenter для истинного полноэкранного режима без рамок
+        appWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
 
         // Windows 11: у overlapped-окон по умолчанию скруглённые углы — отключаем.
         DisableProjectionWindowChrome(hwnd);
 
-        appWindow.MoveAndResize(bounds);
         SetProjectionTopMost(hwnd);
         StartTopMostKeeper(hwnd);
     }

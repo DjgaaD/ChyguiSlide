@@ -123,6 +123,7 @@ public sealed partial class SongEditorViewModel : ObservableRecipient
     public IRelayCommand RepeatChorusAfterVersesCommand { get; }
     public IRelayCommand RefreshPreviewCommand { get; }
     public IRelayCommand DismissValidationCommand { get; }
+    public IRelayCommand SectionContentToSingleLineCommand { get; }
 
     public SongEditorViewModel(
         ICatalogService catalogService,
@@ -145,6 +146,7 @@ public sealed partial class SongEditorViewModel : ObservableRecipient
         RepeatChorusAfterVersesCommand = new RelayCommand(RepeatChorusAfterVerses, CanRepeatChorus);
         RefreshPreviewCommand = new RelayCommand(UpdatePreview);
         DismissValidationCommand = new RelayCommand(ClearValidation);
+        SectionContentToSingleLineCommand = new RelayCommand(SectionContentToSingleLine, () => SelectedSection is not null);
 
         Sections.CollectionChanged += OnSectionsCollectionChanged;
     }
@@ -506,6 +508,23 @@ public sealed partial class SongEditorViewModel : ObservableRecipient
         RenumberSections();
         SetDirtyAndUpdatePreview();
         RepeatChorusAfterVersesCommand.NotifyCanExecuteChanged();
+    }
+
+    private void SectionContentToSingleLine()
+    {
+        if (SelectedSection is null)
+        {
+            return;
+        }
+
+        // Заменяем переносы строк на пробелы
+        var content = SelectedSection.Content ?? string.Empty;
+        var singleLine = System.Text.RegularExpressions.Regex.Replace(content, @"\r\n?|\n", " ");
+        // Убираем лишние пробелы (если между строками уже были пробелы)
+        singleLine = System.Text.RegularExpressions.Regex.Replace(singleLine, " +", " ").Trim();
+
+        SelectedSection.Content = singleLine;
+        SetDirtyAndUpdatePreview();
     }
 
     private void LoadSongIntoEditor(Song song)
