@@ -43,13 +43,13 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <Content Include="Assets\SplashScreen.scale-200.png" />
-        <Content Include="Assets\LockScreenLogo.scale-200.png" />
-        <Content Include="Assets\Square150x150Logo.scale-200.png" />
-        <Content Include="Assets\Square44x44Logo.scale-200.png" />
-        <Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
-        <Content Include="Assets\StoreLogo.png" />
-        <Content Include="Assets\Wide310x150Logo.scale-200.png" />
+        <Content Include="Assets\SplashScreen.scale-200.png" CopyToOutputDirectory="PreserveNewest" TargetPath="Assets\SplashScreen.scale-200.png" />
+        <Content Include="Assets\LockScreenLogo.scale-200.png" CopyToOutputDirectory="PreserveNewest" TargetPath="Assets\LockScreenLogo.scale-200.png" />
+        <Content Include="Assets\Square150x150Logo.scale-200.png" CopyToOutputDirectory="PreserveNewest" TargetPath="Assets\Square150x150Logo.scale-200.png" />
+        <Content Include="Assets\Square44x44Logo.scale-200.png" CopyToOutputDirectory="PreserveNewest" TargetPath="Assets\Square44x44Logo.scale-200.png" />
+        <Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" CopyToOutputDirectory="PreserveNewest" TargetPath="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
+        <Content Include="Assets\StoreLogo.png" CopyToOutputDirectory="PreserveNewest" TargetPath="Assets\StoreLogo.png" />
+        <Content Include="Assets\Wide310x150Logo.scale-200.png" CopyToOutputDirectory="PreserveNewest" TargetPath="Assets\Wide310x150Logo.scale-200.png" />
         <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" TargetPath="Assets\AppIcon.ico" />
         <Content Include="Assets\Bible\bible.json" CopyToOutputDirectory="PreserveNewest" />
         <Content Include="Assets\Seed\PesnVozr\pv3300.sps" CopyToOutputDirectory="PreserveNewest" />
