@@ -39,9 +39,9 @@ DefaultGroupName={#MyAppGroupName}
 DisableProgramGroupPage=yes
 OutputDir=..\artifacts\release
 OutputBaseFilename=ChyguiSlide-{#MyAppVersionLabel}-Setup
-; #ifexist "..\Assets\AppIcon.ico"
-; SetupIconFile=..\Assets\AppIcon.ico
-; #endif
+#ifexist "..\Assets\AppIcon.ico"
+SetupIconFile=..\Assets\AppIcon.ico
+#endif
 UninstallDisplayIcon={app}\{#MyAppExeName}
 UninstallDisplayName={#MyAppDisplayName}
 Compression=lzma2/max
