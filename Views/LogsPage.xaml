@@ -51,6 +51,8 @@
             <Button Content="Очистить" 
                     Command="{x:Bind ViewModel.ClearCommand}"
                     Style="{StaticResource AccentButtonStyle}"/>
+            <Button Content="Копировать" 
+                    Command="{x:Bind ViewModel.CopyCommand}"/>
             <Button Content="Сохранить в файл" 
                     Command="{x:Bind ViewModel.SaveCommand}"/>
         </StackPanel>

@@ -1,6 +1,7 @@
 using ChyguiSlide.Data.Entities;
 using ChyguiSlide.Data.Enums;
 using ChyguiSlide.Data.ValueObjects;
+using ChyguiSlide.Services.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -29,6 +30,9 @@ public class ThemePresetConfiguration : IEntityTypeConfiguration<ThemePreset>
         builder.Property(x => x.SectionTransitionMode)
             .HasConversion<int>();
 
+        builder.Property(x => x.TransitionStyle)
+            .HasConversion<int>();
+
         builder.Property(x => x.SectionTransitionDurationMs);
 
         builder.Property(x => x.BackgroundMediaPath)
@@ -45,6 +49,14 @@ public class ThemePresetConfiguration : IEntityTypeConfiguration<ThemePreset>
             .HasMaxLength(16);
 
         builder.Property(x => x.TextOutlineOpacity);
+
+        builder.Property(x => x.ShowBibleReference);
+
+        builder.Property(x => x.BibleReferencePlacement)
+            .HasConversion<int>();
+
+        builder.Property(x => x.BibleReferenceAlignment)
+            .HasMaxLength(16);
 
         builder.OwnsOne(
             x => x.Colors,

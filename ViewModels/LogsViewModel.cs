@@ -1,9 +1,11 @@
 using System.Collections.ObjectModel;
+using System.Text;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ChyguiSlide.Services.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Windows.Storage.Pickers;
+using Windows.ApplicationModel.DataTransfer;
 
 namespace ChyguiSlide.ViewModels;
 
@@ -18,16 +20,40 @@ public partial class LogsViewModel : ObservableObject
 
         ClearCommand = new RelayCommand(ClearLogs);
         SaveCommand = new AsyncRelayCommand(SaveLogsAsync);
+        CopyCommand = new RelayCommand(CopyLogs);
     }
 
     public ObservableCollection<string> Logs { get; }
 
     public IRelayCommand ClearCommand { get; }
     public IAsyncRelayCommand SaveCommand { get; }
+    public IRelayCommand CopyCommand { get; }
 
     private void ClearLogs()
     {
         _loggingService.Clear();
+    }
+
+    private void CopyLogs()
+    {
+        try
+        {
+            var content = new StringBuilder();
+            foreach (var log in Logs)
+            {
+                content.AppendLine(log);
+            }
+            
+            var dataPackage = new DataPackage();
+            dataPackage.SetText(content.ToString());
+            Clipboard.SetContent(dataPackage);
+            
+            StatusMessage = "Логи скопированы в буфер обмена";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Ошибка копирования: {ex.Message}";
+        }
     }
 
     private async Task SaveLogsAsync()

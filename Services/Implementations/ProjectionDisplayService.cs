@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using ChyguiSlide.Controls;
@@ -33,9 +34,8 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
     private readonly DispatcherQueue _dispatcher;
     private readonly HotkeyDispatcher _hotkeyDispatcher;
 
-    private ProjectionWindow? _window;
+    private ProjectionWindowWeb? _windowWeb;
     private ProjectionDisplayViewModel? _viewModel;
-    private ProjectionStageView? _stage;
     private ProjectionStageView? _previewStage;
     private Panel? _previewHost;
     private CameraMediaStreamSource? _cameraMediaStreamSource;
@@ -89,10 +89,10 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
         _dispatcher = App.MainDispatcherQueue;
     }
 
-    public bool IsOpen => _window is not null;
+    public bool IsOpen => _windowWeb is not null;
     public bool IsBlackout => _viewModel?.IsBlackout ?? false;
     public bool IsNdiModeActive => _viewModel?.IsNdiVideoMode ?? false;
-    public UIElement? ProgramStage => _stage;
+    public UIElement? ProgramStage => _previewStage;
 
     public event EventHandler<bool>? ProjectionWindowVisibilityChanged;
     public event EventHandler<bool>? BlackoutStateChanged;
@@ -102,54 +102,83 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
     {
         await RunOnDispatcherAsync(async () =>
         {
-            ChyguiSlide.Data.InteractionLogger.Log($"ShowAsync: enter. WindowExists={_window is not null}, PreviewStage={( _previewStage is null ? "null" : _previewStage.GetHashCode().ToString())}, PreviewHost={( _previewHost is null ? "null" : _previewHost.GetHashCode().ToString())}");
+            ChyguiSlide.Data.InteractionLogger.Log($"ShowAsync: enter. WindowExists={_windowWeb is not null}, PreviewStage={( _previewStage is null ? "null" : _previewStage.GetHashCode().ToString())}, PreviewHost={( _previewHost is null ? "null" : _previewHost.GetHashCode().ToString())}");
             System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] ShowAsync enter. PreviewHost={( _previewHost is null ? "null" : _previewHost.GetHashCode().ToString())}");
-            if (_window is not null)
+            if (_windowWeb is not null)
             {
                 return;
             }
 
-            var stage = EnsureStage();
-            _window = ActivatorUtilities.CreateInstance<ProjectionWindow>(_serviceProvider);
-            _window.Closed += OnWindowClosed;
-
-            AttachStageToWindow(_window, stage);
-
-            // Сбрасываем syncedBackgroundVideoPath при открытии нового окна,
-            // чтобы видео устанавливалось заново для новых плееров
-            var keepBackground = await _displaySettingsService.GetKeepProjectionBackgroundAsync();
-            _syncedBackgroundVideoPath = null;
-
-            // Тема и раскладка до Activate — иначе краткий белый кадр пустого окна
-            System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] ShowAsync: Before ApplySavedThemeAsync");
-            ChyguiSlide.Data.InteractionLogger.Log($"ShowAsync: Before ApplySavedThemeAsync");
-            // Не начинаем новую сессию фона при постоянном фоне, чтобы избежать мерцания
-            await ApplySavedThemeAsync(startNewBackgroundSession: !keepBackground);
-            System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] ShowAsync: After ApplySavedThemeAsync");
-            ChyguiSlide.Data.InteractionLogger.Log($"ShowAsync: After ApplySavedThemeAsync");
-            await ApplyTextLayoutModeAsync();
-
-            await TrySetFullScreenOnSelectedDisplayAsync(_window);
-            _window.Activate();
-
-            // Исключаем окно из Aero Peek после того как оно показано
-            _window.ExcludeFromAeroPeek();
-
-            // Хоткеи должны работать и когда фокус на окне проекции
-            _hotkeyDispatcher.AttachToProjection(stage);
-
-            // Возвращаем фокус оператору на главное окно — управление со стрелок/Esc
-            App.MainWindow?.Activate();
-
-            // Обновляем превью при открытии трансляции
-            if (_previewStage is not null && _previewHost is not null)
-            {
-                AttachStageToPreview(_previewStage);
-                _viewModel?.EnsureContentVisible();
-            }
-
-            ProjectionWindowVisibilityChanged?.Invoke(this, true);
+            await ShowWebWindowAsync();
         });
+    }
+
+    private async Task ShowWebWindowAsync()
+    {
+        _viewModel ??= _serviceProvider.GetRequiredService<ProjectionDisplayViewModel>();
+        _windowWeb = ActivatorUtilities.CreateInstance<ProjectionWindowWeb>(_serviceProvider, _viewModel);
+        _windowWeb.Closed += OnWindowClosed;
+
+        // Сбрасываем syncedBackgroundVideoPath при открытии нового окна
+        var keepBackground = await _displaySettingsService.GetKeepProjectionBackgroundAsync();
+        _syncedBackgroundVideoPath = null;
+
+        // Тема и раскладка до Activate
+        System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] ShowWebWindowAsync: Before ApplySavedThemeAsync");
+        ChyguiSlide.Data.InteractionLogger.Log($"ShowWebWindowAsync: Before ApplySavedThemeAsync");
+        await ApplySavedThemeAsync(startNewBackgroundSession: !keepBackground);
+        System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] ShowWebWindowAsync: After ApplySavedThemeAsync");
+        ChyguiSlide.Data.InteractionLogger.Log($"ShowWebWindowAsync: After ApplySavedThemeAsync");
+        await ApplyTextLayoutModeAsync();
+
+        // Позиционируем на выбранном экране
+        var selectedDisplay = await _displaySettingsService.GetSelectedDisplayAsync();
+        DisplayArea? targetDisplayArea = null;
+
+        if (selectedDisplay is not null)
+        {
+            var displays = await _displaySettingsService.GetAvailableDisplaysAsync();
+            var foundDisplay = displays.FirstOrDefault(d => d.Id == selectedDisplay.Id);
+            if (foundDisplay is not null)
+            {
+                var point = new PointInt32(foundDisplay.X, foundDisplay.Y);
+                targetDisplayArea = DisplayArea.GetFromPoint(point, DisplayAreaFallback.Nearest);
+            }
+        }
+
+        _windowWeb.SetFullScreenOnDisplay(targetDisplayArea);
+        _windowWeb.Activate();
+
+        // Исключаем окно из Aero Peek
+        _windowWeb.ExcludeFromAeroPeek();
+
+        // Хоткеи должны работать и когда фокус на окне проекции
+        _hotkeyDispatcher.AttachToProjection(_previewStage);
+
+        // Always-on-top keeper (как у бывшего Win32-окна)
+        try
+        {
+            var hwnd = WindowNative.GetWindowHandle(_windowWeb);
+            DisableProjectionWindowChrome(hwnd);
+            SetProjectionTopMost(hwnd);
+            StartTopMostKeeper(hwnd);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] TopMost setup failed: {ex.Message}");
+        }
+
+        // Возвращаем фокус оператору на главное окно
+        App.MainWindow?.Activate();
+
+        // Обновляем превью при открытии трансляции
+        if (_previewStage is not null && _previewHost is not null)
+        {
+            AttachStageToPreview(_previewStage);
+            _viewModel?.EnsureContentVisible();
+        }
+
+        ProjectionWindowVisibilityChanged?.Invoke(this, true);
     }
 
     public void BindProgramPreviewHost(Panel? host)
@@ -168,7 +197,8 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
                 System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Creating preview stage instance");
                 ChyguiSlide.Data.InteractionLogger.Log("Creating preview stage instance");
                 _previewStage = new ProjectionStageView();
-                _previewStage.BindViewModel(_viewModel, enableTransitionPlayer: false);
+                _previewStage.BindViewModel(_viewModel);
+                EnsureBackgroundMediaSubscription(_viewModel);
             }
 
             if (host is not null)
@@ -192,38 +222,6 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
         });
     }
 
-    private ProjectionStageView EnsureStage()
-    {
-        _viewModel ??= _serviceProvider.GetRequiredService<ProjectionDisplayViewModel>();
-        if (_stage is null)
-        {
-            _stage = new ProjectionStageView();
-            _stage.BindViewModel(_viewModel);
-            EnsureBackgroundMediaSubscription(_viewModel);
-            // Тема не применяется здесь - только в ShowAsync для избежания дублирования
-            // _ = ApplySavedThemeAsync(startNewBackgroundSession: false);
-            _ = ApplyTextLayoutModeAsync();
-        }
-        else
-        {
-            // Если stage уже существует (например, после закрытия и повторного открытия),
-            // убеждаемся что ViewModel привязана правильно
-            _stage.BindViewModel(_viewModel);
-        }
-
-        return _stage;
-    }
-
-    private void AttachStageToWindow(ProjectionWindow window, ProjectionStageView stage)
-    {
-        if (stage.Parent is Panel previewParent)
-        {
-            previewParent.Children.Remove(stage);
-        }
-
-        window.AttachStage(stage);
-    }
-
     private void AttachStageToPreview(ProjectionStageView stage)
     {
         if (_previewHost is null)
@@ -244,21 +242,6 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
             _previewHost.Children.Clear();
             _previewHost.Children.Add(stage);
         }
-    }
-
-    private void ReturnStageToPreview()
-    {
-        if (_stage is null)
-        {
-            return;
-        }
-
-        if (_window is not null)
-        {
-            _ = _window.DetachStage();
-        }
-
-        AttachStageToPreview(_stage);
     }
 
     private async Task ApplySavedThemeAsync(bool startNewBackgroundSession = false)
@@ -333,56 +316,48 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
 
     public void Hide()
     {
-        if (_window is null)
+        if (_windowWeb is null)
         {
             return;
         }
 
-        _ = RunOnDispatcherAsync(async () =>
+        _ = RunOnDispatcherAsync(async () => await HideWebWindowAsync());
+    }
+
+    private async Task HideWebWindowAsync()
+    {
+        if (_windowWeb is null)
         {
-            if (_window is null)
-            {
-                return;
-            }
+            return;
+        }
 
-            // Сначала закрываем окно (важно при выходе из приложения),
-            // затем отключаем камеру/NDI — иначе они могут задержать Close.
-            var window = _window;
-            StopTopMostKeeper();
-            _hotkeyDispatcher.DetachProjection();
-            window.Closed -= OnWindowClosed;
+        var window = _windowWeb;
+        StopTopMostKeeper();
+        _hotkeyDispatcher.DetachProjection();
+        window.Closed -= OnWindowClosed;
+        window.DisposeAdapter();
 
-            ReturnStageToPreview();
+        if (_viewModel is not null)
+        {
+            _viewModel.BackgroundMediaChanged -= OnBackgroundMediaChanged;
+        }
 
-            if (_viewModel is not null)
-            {
-                _viewModel.BackgroundMediaChanged -= OnBackgroundMediaChanged;
-            }
+        _syncedBackgroundVideoPath = null;
+        _windowWeb = null;
+        // Не обнуляем _viewModel и _previewStage — они используются для превью
+        window.Close();
+        ProjectionWindowVisibilityChanged?.Invoke(this, false);
 
-            _syncedBackgroundVideoPath = null;
-            _window = null;
-            _stage = null;
-            // Не обнуляем _viewModel и _previewStage - они используются для превью
-            // _viewModel = null;
-            // _previewStage = null;
-            window.Close();
-            ProjectionWindowVisibilityChanged?.Invoke(this, false);
-
-            // Сбрасываем syncedBackgroundVideoPath после закрытия окна,
-            // чтобы при следующем открытии видео устанавливалось заново
-            _syncedBackgroundVideoPath = null;
-
-            try
-            {
-                await DisconnectFromCameraAsync();
-                await DisconnectFromNdiAsync();
-                await TeardownNdiVideoAsync();
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] Cleanup after Hide: {ex.Message}");
-            }
-        });
+        try
+        {
+            await DisconnectFromCameraAsync();
+            await DisconnectFromNdiAsync();
+            await TeardownNdiVideoAsync();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] HideWebWindowAsync teardown: {ex.Message}");
+        }
     }
 
     public void SetBlackout(bool isBlackout)
@@ -449,9 +424,7 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
 
         var players = new MediaPlayerElement?[]
         {
-            _previewStage?.BackgroundVideoPlayerElement,
-            _stage?.BackgroundVideoPlayerElement,
-            _window?.BackgroundVideoPlayerElement
+            _previewStage?.BackgroundVideoPlayerElement
         };
 
         System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] IsBackgroundVideoVisible={_viewModel.IsBackgroundVideoVisible}, BackgroundVideoPath={_viewModel.BackgroundVideoPath}");
@@ -749,12 +722,6 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
     {
         await RunOnDispatcherAsync(() =>
         {
-            if (_window == null)
-            {
-                System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] SetupNdiVideoAsync: Window is null");
-                return;
-            }
-
             try
             {
                 System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Setting up NDI video...");
@@ -783,19 +750,8 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
     {
         _dispatcher.TryEnqueue(() =>
         {
-            // Обновляем NDI изображение для окна, сцены и превью (если есть)
             try
             {
-                if (_window?.NdiVideoImageElement != null)
-                {
-                    _window.NdiVideoImageElement.Source = bitmap;
-                }
-
-                if (_stage?.NdiVideoImageElement != null)
-                {
-                    _stage.NdiVideoImageElement.Source = bitmap;
-                }
-
                 if (_previewStage?.NdiVideoImageElement != null)
                 {
                     _previewStage.NdiVideoImageElement.Source = bitmap;
@@ -803,7 +759,7 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] Error updating NDI bitmap for preview/stage/window: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] Error updating NDI bitmap for preview: {ex.Message}");
             }
         });
     }
@@ -820,13 +776,9 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
                 _ndiVideoRenderer = null;
             }
 
-            if (_window?.NdiVideoImageElement != null)
+            if (_previewStage?.NdiVideoImageElement != null)
             {
-                _window.NdiVideoImageElement.Source = null;
-            }
-            else if (_stage?.NdiVideoImageElement != null)
-            {
-                _stage.NdiVideoImageElement.Source = null;
+                _previewStage.NdiVideoImageElement.Source = null;
             }
 
             System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] NDI video torn down");
@@ -969,89 +921,41 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
     {
         await RunOnDispatcherAsync(() =>
         {
-            if (_window == null)
-            {
-                System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] SetupVideoStreamAsync: Window is null");
-                return;
-            }
-
             try
             {
-                System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Setting up video stream (separate players for main and preview)...");
-                ChyguiSlide.Data.InteractionLogger.Log("SetupVideoStreamAsync: start - creating separate MediaPlayers/MediaSources for main and preview");
+                System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Setting up video stream for preview...");
+                ChyguiSlide.Data.InteractionLogger.Log("SetupVideoStreamAsync: start - preview MediaPlayer");
 
-                // Создаем MediaStreamSource для передачи H.264/H.265 данных в MediaPlayer
                 _cameraMediaStreamSource = new CameraMediaStreamSource(_cameraStreamService);
-
-                // Подписываемся на событие изменения MediaStreamSource (например, при смене кодека)
                 _cameraMediaStreamSource.MediaStreamSourceChanged += OnMediaStreamSourceChanged;
 
-                // Получаем MediaPlayerElement для основного stage/okna и для превью
-                var mainVideoPlayer = _stage?.VideoPlayerElement ?? _window?.VideoPlayerElement;
                 var previewVideoPlayer = _previewStage?.VideoPlayerElement;
-
-                if (mainVideoPlayer is null && previewVideoPlayer is null)
+                if (previewVideoPlayer is null)
                 {
-                    System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] No VideoPlayerElement available for stage/window/preview");
+                    System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] No preview VideoPlayerElement available");
                     ChyguiSlide.Data.InteractionLogger.Log("SetupVideoStreamAsync: no VideoPlayerElement available");
                     return;
                 }
 
                 try
                 {
-                    // Создаем отдельные MediaStreamSource/MediaSource для основного и превью,
-                    // чтобы не пытаться подключать один и тот же источник к двум плеерам.
-                    var mediaStreamSourceMain = _cameraMediaStreamSource.CreateMediaStreamSource();
                     var mediaStreamSourcePreview = _cameraMediaStreamSource.CreateMediaStreamSource();
-
-                    var mediaSourceMain = MediaSource.CreateFromMediaStreamSource(mediaStreamSourceMain);
                     var mediaSourcePreview = MediaSource.CreateFromMediaStreamSource(mediaStreamSourcePreview);
 
-                    // Настраиваем основной плеер
-                    if (mainVideoPlayer is not null)
+                    System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Setting MediaSource on preview video player...");
+                    ChyguiSlide.Data.InteractionLogger.Log("SetupVideoStreamAsync: assigning preview MediaSource");
+
+                    var previewMediaPlayer = previewVideoPlayer.MediaPlayer ?? new MediaPlayer();
+                    previewMediaPlayer.IsMuted = false;
+                    previewMediaPlayer.AutoPlay = true;
+                    previewMediaPlayer.CommandManager.IsEnabled = false;
+                    if (previewVideoPlayer.MediaPlayer is null)
                     {
-                        System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Setting MediaSource on main video player (separate)...");
-                        ChyguiSlide.Data.InteractionLogger.Log("SetupVideoStreamAsync: assigning main MediaSource");
-
-                        var mainMediaPlayer = mainVideoPlayer.MediaPlayer ?? new MediaPlayer();
-                        mainMediaPlayer.IsMuted = false;
-                        mainMediaPlayer.AutoPlay = true;
-                        mainMediaPlayer.CommandManager.IsEnabled = false;
-                        if (mainVideoPlayer.MediaPlayer is null)
-                        {
-                            mainVideoPlayer.SetMediaPlayer(mainMediaPlayer);
-                        }
-
-                        mainVideoPlayer.Source = mediaSourceMain;
-                        mainMediaPlayer.Play();
+                        previewVideoPlayer.SetMediaPlayer(previewMediaPlayer);
                     }
 
-                    // Настраиваем превью плеер
-                    if (previewVideoPlayer is not null)
-                    {
-                        try
-                        {
-                            System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Setting MediaSource on preview video player (separate)...");
-                            ChyguiSlide.Data.InteractionLogger.Log("SetupVideoStreamAsync: assigning preview MediaSource");
-
-                            var previewMediaPlayer = previewVideoPlayer.MediaPlayer ?? new MediaPlayer();
-                            previewMediaPlayer.IsMuted = false;
-                            previewMediaPlayer.AutoPlay = true;
-                            previewMediaPlayer.CommandManager.IsEnabled = false;
-                            if (previewVideoPlayer.MediaPlayer is null)
-                            {
-                                previewVideoPlayer.SetMediaPlayer(previewMediaPlayer);
-                            }
-
-                            previewVideoPlayer.Source = mediaSourcePreview;
-                            previewMediaPlayer.Play();
-                        }
-                        catch (Exception exPreview)
-                        {
-                            System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] Failed to set preview MediaSource: {exPreview.Message}");
-                            ChyguiSlide.Data.InteractionLogger.Log($"SetupVideoStreamAsync: failed to assign preview MediaSource: {exPreview.Message}");
-                        }
-                    }
+                    previewVideoPlayer.Source = mediaSourcePreview;
+                    previewMediaPlayer.Play();
 
                     System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Video stream setup complete");
                     ChyguiSlide.Data.InteractionLogger.Log("SetupVideoStreamAsync: complete");
@@ -1068,7 +972,7 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
             }
         });
     }
-    
+
     private void OnMediaStreamSourceChanged(object? sender, MediaStreamSource newMediaStreamSource)
     {
         _dispatcher.TryEnqueue(async () =>
@@ -1076,138 +980,41 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
             try
             {
                 System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] MediaStreamSource changed, creating new MediaPlayer");
-                
-                var videoPlayer = _stage?.VideoPlayerElement ?? _window?.VideoPlayerElement;
-                var previewVideoPlayer = _previewStage?.VideoPlayerElement;
 
-                if (videoPlayer == null && previewVideoPlayer == null)
+                var previewVideoPlayer = _previewStage?.VideoPlayerElement;
+                if (previewVideoPlayer is null)
                 {
-                    System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] VideoPlayerElement is null, cannot update MediaSource");
+                    System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Preview VideoPlayerElement is null, cannot update MediaSource");
                     return;
                 }
 
-                // Получаем текущий MediaPlayer и полностью очищаем его (для основного и превью)
-                var oldMediaPlayer = videoPlayer?.MediaPlayer;
+                var oldMediaPlayer = previewVideoPlayer.MediaPlayer;
                 if (oldMediaPlayer != null)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] Current MediaPlayer state: {oldMediaPlayer.CurrentState}");
-                    
-                    // Останавливаем и очищаем старый MediaPlayer
                     oldMediaPlayer.Pause();
                     oldMediaPlayer.Source = null;
-                    System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Paused and cleared old MediaPlayer");
                 }
-                
-                // Очищаем Source в MediaPlayerElement (основной и превью)
-                if (videoPlayer != null)
-                {
-                    videoPlayer.Source = null;
-                }
-                if (previewVideoPlayer != null)
-                {
-                    previewVideoPlayer.Source = null;
-                }
-                System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Cleared MediaPlayerElement Source");
-                
-                // Полностью удаляем MediaPlayer из MediaPlayerElement
-                if (videoPlayer != null)
-                {
-                    videoPlayer.SetMediaPlayer(null);
-                }
-                if (previewVideoPlayer != null)
-                {
-                    previewVideoPlayer.SetMediaPlayer(null);
-                }
-                System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Removed MediaPlayer from MediaPlayerElement");
-                
-                // Задержка для полного освобождения ресурсов
+
+                previewVideoPlayer.Source = null;
+                previewVideoPlayer.SetMediaPlayer(null);
                 await Task.Delay(500);
-                
-                // Создаем новый MediaPlayer явно
+
                 var newMediaPlayer = new MediaPlayer();
-                System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Created new MediaPlayer explicitly");
-                
-                // Подписываемся на событие MediaOpened для отслеживания готовности
                 TypedEventHandler<MediaPlayer, object>? mediaOpenedHandler = null;
-                mediaOpenedHandler = (sender, args) =>
+                mediaOpenedHandler = (s, args) =>
                 {
-                    System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] MediaOpened event fired for new MediaPlayer");
-                    if (newMediaPlayer != null)
-                    {
-                        newMediaPlayer.MediaOpened -= mediaOpenedHandler;
-                        newMediaPlayer.Play();
-                        System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Play() called after MediaOpened event");
-                    }
+                    newMediaPlayer.MediaOpened -= mediaOpenedHandler;
+                    newMediaPlayer.Play();
                 };
                 newMediaPlayer.MediaOpened += mediaOpenedHandler;
-                
-                // Подписываемся на событие CurrentStateChanged для отслеживания состояния
-                TypedEventHandler<MediaPlayer, object>? stateChangedHandler = null;
-                stateChangedHandler = (sender, args) =>
-                {
-                    var state = newMediaPlayer.CurrentState;
-                    System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] MediaPlayer state changed: {state}");
-                    
-                    // Если MediaPlayer в состоянии Opening, Buffering или Paused, пытаемся запустить воспроизведение
-                    if (state == MediaPlayerState.Opening || state == MediaPlayerState.Buffering || state == MediaPlayerState.Paused)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] MediaPlayer is {state}, calling Play()");
-                        newMediaPlayer.Play();
-                    }
-                };
-                newMediaPlayer.CurrentStateChanged += stateChangedHandler;
-                
-                // Устанавливаем новый MediaPlayer в MediaPlayerElement ПЕРЕД установкой Source (для основного и превью)
-                if (videoPlayer != null)
-                {
-                    videoPlayer.SetMediaPlayer(newMediaPlayer);
-                }
-                if (previewVideoPlayer != null)
-                {
-                    // Для превью создаём отдельный MediaPlayer, чтобы избежать конфликтов
-                    try
-                    {
-                        var previewMediaPlayer = new MediaPlayer();
-                        previewVideoPlayer.SetMediaPlayer(previewMediaPlayer);
-                    }
-                    catch (Exception exPv)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] Failed to set MediaPlayer for preview: {exPv.Message}");
-                    }
-                }
-                System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Set new MediaPlayer in MediaPlayerElement");
-                
-                // Задержка для инициализации MediaPlayer в MediaPlayerElement
+
+                previewVideoPlayer.SetMediaPlayer(newMediaPlayer);
                 await Task.Delay(200);
-                
-                // Создаем новый MediaSource из нового MediaStreamSource
+
                 var newMediaSource = MediaSource.CreateFromMediaStreamSource(newMediaStreamSource);
-                System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Created new MediaSource from MediaStreamSource");
-                
-                // Устанавливаем Source в MediaPlayerElement (используя уже установленный MediaPlayer)
-                if (videoPlayer != null)
-                {
-                    videoPlayer.Source = newMediaSource;
-                }
-                if (previewVideoPlayer != null)
-                {
-                    try
-                    {
-                        previewVideoPlayer.Source = newMediaSource;
-                    }
-                    catch (Exception exPv2)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] Failed to set preview Source: {exPv2.Message}");
-                    }
-                }
-                System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Set new MediaSource in MediaPlayerElement");
-                
-                // Задержка перед запуском воспроизведения
+                previewVideoPlayer.Source = newMediaSource;
                 await Task.Delay(200);
-                
-                // Запускаем воспроизведение
                 newMediaPlayer.Play();
-                System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Play() called on new MediaPlayer");
             }
             catch (Exception ex)
             {
@@ -1222,13 +1029,12 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
         {
             try
             {
-                // Отписываемся от события
                 if (_cameraMediaStreamSource != null)
                 {
                     _cameraMediaStreamSource.MediaStreamSourceChanged -= OnMediaStreamSourceChanged;
                 }
-                
-                var videoPlayer = _stage?.VideoPlayerElement ?? _window?.VideoPlayerElement;
+
+                var videoPlayer = _previewStage?.VideoPlayerElement;
                 if (videoPlayer != null)
                 {
                     videoPlayer.Source = null;
@@ -1246,337 +1052,23 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
 
     private void OnWindowClosed(object sender, WindowEventArgs e)
     {
-        if (_window is not null)
+        if (_windowWeb is null)
         {
-            StopTopMostKeeper();
-            _hotkeyDispatcher.DetachProjection();
-            ReturnStageToPreview();
-            if (_viewModel is not null)
-            {
-                _viewModel.BackgroundMediaChanged -= OnBackgroundMediaChanged;
-            }
-
-            _window.Closed -= OnWindowClosed;
-            _syncedBackgroundVideoPath = null;
-            _window = null;
-            ProjectionWindowVisibilityChanged?.Invoke(this, false);
-        }
-    }
-
-    private async Task TrySetFullScreenOnSelectedDisplayAsync(ProjectionWindow window)
-    {
-        try
-        {
-            var hwnd = WindowNative.GetWindowHandle(window);
-            var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
-            var appWindow = AppWindow.GetFromWindowId(windowId);
-            
-            // Получаем выбранный экран из настроек
-            var selectedDisplayId = await _displaySettingsService.GetSelectedDisplayIdAsync();
-            System.Diagnostics.Debug.WriteLine($"=== Попытка открыть проектор на выбранном экране ===");
-            System.Diagnostics.Debug.WriteLine($"Выбранный DisplayId из настроек: '{selectedDisplayId ?? "null"}'");
-            
-            var selectedDisplay = await _displaySettingsService.GetSelectedDisplayAsync();
-            DisplayArea? targetDisplayArea = null;
-            
-            if (selectedDisplay is null)
-            {
-                System.Diagnostics.Debug.WriteLine("ВНИМАНИЕ: selectedDisplay = null (экран не найден в списке доступных)");
-                if (selectedDisplayId is not null)
-                {
-                    System.Diagnostics.Debug.WriteLine($"  Возможно, ID '{selectedDisplayId}' не соответствует ни одному из доступных экранов");
-                    var allDisplays = await _displaySettingsService.GetAvailableDisplaysAsync();
-                    System.Diagnostics.Debug.WriteLine($"  Доступно экранов: {allDisplays.Count}");
-                    foreach (var display in allDisplays)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"    - ID: '{display.Id}', Name: '{display.Name}', X={display.X}, Y={display.Y}");
-                    }
-                }
-            }
-            else
-            {
-                System.Diagnostics.Debug.WriteLine($"✓ Найден выбранный экран: ID={selectedDisplay.Id}, Name={selectedDisplay.Name}, X={selectedDisplay.X}, Y={selectedDisplay.Y}, W={selectedDisplay.Width}, H={selectedDisplay.Height}, IsPrimary={selectedDisplay.IsPrimary}");
-            }
-            
-            if (selectedDisplay is not null)
-            {
-                
-                // Пытаемся найти DisplayArea по ID или координатам
-                try
-                {
-                    // Если ID это числовой DisplayId
-                    if (ulong.TryParse(selectedDisplay.Id, out var displayIdValue))
-                    {
-                        try
-                        {
-                            var displayId = new Microsoft.UI.DisplayId { Value = displayIdValue };
-                            targetDisplayArea = DisplayArea.GetFromDisplayId(displayId);
-                            System.Diagnostics.Debug.WriteLine($"Найден экран по DisplayId: {displayIdValue}");
-                        }
-                        catch (Exception ex)
-                        {
-                            System.Diagnostics.Debug.WriteLine($"Не удалось найти по DisplayId {displayIdValue}: {ex.Message}");
-                        }
-                    }
-                    
-                    // Если не нашли по ID, ищем по координатам
-                    if (targetDisplayArea is null)
-                    {
-                        // Сначала пытаемся получить DisplayArea напрямую по координатам точки
-                        try
-                        {
-                            var point = new PointInt32(selectedDisplay.X, selectedDisplay.Y);
-                            targetDisplayArea = DisplayArea.GetFromPoint(point, DisplayAreaFallback.Nearest);
-                            System.Diagnostics.Debug.WriteLine($"✓ Найден DisplayArea через GetFromPoint для точки ({selectedDisplay.X}, {selectedDisplay.Y})");
-                        }
-                        catch (Exception ex)
-                        {
-                            System.Diagnostics.Debug.WriteLine($"Не удалось получить DisplayArea через GetFromPoint: {ex.Message}");
-                        }
-                        
-                        // Если не нашли через GetFromPoint, перебираем все DisplayArea
-                        if (targetDisplayArea is null)
-                        {
-                            var allDisplayAreas = DisplayArea.FindAll();
-                            System.Diagnostics.Debug.WriteLine($"Всего DisplayArea найдено: {allDisplayAreas.Count}");
-                            
-                            // Сначала пытаемся найти точное совпадение по координатам
-                            System.Diagnostics.Debug.WriteLine($"Ищем по точным координатам: X={selectedDisplay.X}, Y={selectedDisplay.Y}");
-                        foreach (var da in allDisplayAreas)
-                        {
-                            var workArea = da.WorkArea;
-                            try
-                            {
-                                ulong displayId = 0;
-                                try
-                                {
-                                    displayId = da.DisplayId.Value;
-                                    System.Diagnostics.Debug.WriteLine($"  DisplayArea: ID={displayId}, X={workArea.X}, Y={workArea.Y}, W={workArea.Width}, H={workArea.Height}");
-                                }
-                                catch
-                                {
-                                    System.Diagnostics.Debug.WriteLine($"  DisplayArea: X={workArea.X}, Y={workArea.Y}, W={workArea.Width}, H={workArea.Height} (ID недоступен)");
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                System.Diagnostics.Debug.WriteLine($"  DisplayArea: X={workArea.X}, Y={workArea.Y}, W={workArea.Width}, H={workArea.Height} (ошибка получения ID: {ex.Message})");
-                            }
-                            
-                            // Точное совпадение координат (начало экрана)
-                            if (workArea.X == selectedDisplay.X && workArea.Y == selectedDisplay.Y)
-                            {
-                                targetDisplayArea = da;
-                                System.Diagnostics.Debug.WriteLine($"✓ Найден экран по точным координатам WorkArea!");
-                                break;
-                            }
-                        }
-                        
-                        // Если не нашли точное совпадение, ищем по попаданию точки в область
-                        if (targetDisplayArea is null)
-                        {
-                            System.Diagnostics.Debug.WriteLine("Точное совпадение не найдено, ищем по попаданию точки в область...");
-                            foreach (var da in allDisplayAreas)
-                            {
-                                var workArea = da.WorkArea;
-                                
-                                // Проверяем, попадает ли точка (X, Y) выбранного экрана в область этого DisplayArea
-                                var pointInArea = selectedDisplay.X >= workArea.X && 
-                                                 selectedDisplay.X < workArea.X + workArea.Width &&
-                                                 selectedDisplay.Y >= workArea.Y && 
-                                                 selectedDisplay.Y < workArea.Y + workArea.Height;
-                                
-                                if (pointInArea)
-                                {
-                                    targetDisplayArea = da;
-                                    System.Diagnostics.Debug.WriteLine($"✓ Найден экран по попаданию точки в область!");
-                                    break;
-                                }
-                            }
-                        }
-                        
-                        // Если все еще не нашли, проверяем попадание в расширенную область (с учетом того, что WorkArea меньше)
-                        if (targetDisplayArea is null)
-                        {
-                            System.Diagnostics.Debug.WriteLine("Поиск по WorkArea не дал результатов, проверяем расширенную область...");
-                            foreach (var da in allDisplayAreas)
-                            {
-                                var workArea = da.WorkArea;
-                                
-                                // Проверяем, находится ли точка рядом с WorkArea (в пределах 100 пикселей)
-                                // Это нужно, так как WorkArea может быть меньше полного размера монитора
-                                var nearArea = selectedDisplay.X >= workArea.X - 100 && 
-                                             selectedDisplay.X < workArea.X + workArea.Width + 100 &&
-                                             selectedDisplay.Y >= workArea.Y - 100 && 
-                                             selectedDisplay.Y < workArea.Y + workArea.Height + 100;
-                                
-                                if (nearArea)
-                                {
-                                    targetDisplayArea = da;
-                                    System.Diagnostics.Debug.WriteLine($"✓ Найден экран по близости к WorkArea!");
-                                    break;
-                                }
-                            }
-                        }
-                        
-                        // Если все еще не нашли, используем поиск по координатам X,Y с погрешностью
-                        if (targetDisplayArea is null)
-                        {
-                            System.Diagnostics.Debug.WriteLine("Поиск по близости не дал результатов, ищем по координатам X,Y с погрешностью...");
-                            foreach (var da in allDisplayAreas)
-                            {
-                                var workArea = da.WorkArea;
-                                
-                                // Сравниваем только координаты X, Y (размеры могут отличаться из-за панели задач)
-                                var xMatch = Math.Abs(workArea.X - selectedDisplay.X) < 50;
-                                var yMatch = Math.Abs(workArea.Y - selectedDisplay.Y) < 50;
-                                
-                                if (xMatch && yMatch)
-                                {
-                                    targetDisplayArea = da;
-                                    System.Diagnostics.Debug.WriteLine($"✓ Найден экран по координатам X,Y с погрешностью!");
-                                    break;
-                                }
-                            }
-                        }
-                        
-                            if (targetDisplayArea is null)
-                            {
-                                System.Diagnostics.Debug.WriteLine("✗ Не удалось найти DisplayArea по координатам!");
-                            }
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"Ошибка при поиске DisplayArea: {ex.Message}");
-                }
-            }
-            
-            // Если не нашли конкретный экран, используем основной (точка 0,0)
-            if (targetDisplayArea is null)
-            {
-                if (selectedDisplay is null)
-                {
-                    System.Diagnostics.Debug.WriteLine("Экран не выбран в настройках, используем основной экран");
-                }
-                else
-                {
-                    System.Diagnostics.Debug.WriteLine($"Экран '{selectedDisplay.Name}' не найден среди DisplayArea, используем основной экран");
-                }
-                
-                try
-                {
-                    targetDisplayArea = DisplayArea.GetFromPoint(new PointInt32(0, 0), DisplayAreaFallback.Nearest);
-                    System.Diagnostics.Debug.WriteLine($"Используем DisplayArea из точки (0,0)");
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"Ошибка при получении DisplayArea из точки (0,0): {ex.Message}");
-                    // Если не удалось получить DisplayArea, используем первый доступный
-                    var allDisplayAreas = DisplayArea.FindAll();
-                    if (allDisplayAreas.Count > 0)
-                    {
-                        targetDisplayArea = allDisplayAreas[0];
-                        System.Diagnostics.Debug.WriteLine($"Используем первый доступный DisplayArea");
-                    }
-                }
-            }
-            
-            // Перемещаем окно на выбранный экран перед установкой полноэкранного режима
-            if (targetDisplayArea is not null)
-            {
-                var workArea = targetDisplayArea.WorkArea;
-                System.Diagnostics.Debug.WriteLine($"Перемещаем окно на экран: X={workArea.X}, Y={workArea.Y}, W={workArea.Width}, H={workArea.Height}");
-                
-                // Перемещаем окно в начало выбранного экрана
-                // Используем координаты начала экрана для надежного определения
-                appWindow.Move(new PointInt32(workArea.X, workArea.Y));
-                
-                // Даем окну время переместиться перед установкой полноэкранного режима
-                await Task.Delay(200);
-                
-                // Проверяем, что окно находится на правильном экране
-                try
-                {
-                    var checkPoint = new PointInt32(workArea.X + 10, workArea.Y + 10);
-                    var currentDisplayArea = DisplayArea.GetFromPoint(checkPoint, DisplayAreaFallback.Nearest);
-                    var currentWorkArea = currentDisplayArea.WorkArea;
-                    
-                    // Сравниваем по координатам WorkArea вместо DisplayId (более надежно)
-                    var isOnCorrectScreen = currentWorkArea.X == workArea.X && currentWorkArea.Y == workArea.Y;
-                    
-                    if (!isOnCorrectScreen)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"Окно не на правильном экране! Ожидался X={workArea.X}, Y={workArea.Y}, получен X={currentWorkArea.X}, Y={currentWorkArea.Y}");
-                        // Пытаемся переместить еще раз
-                        appWindow.Move(new PointInt32(workArea.X, workArea.Y));
-                        await Task.Delay(200);
-                    }
-                    else
-                    {
-                        try
-                        {
-                            var displayId = targetDisplayArea.DisplayId.Value;
-                            System.Diagnostics.Debug.WriteLine($"Окно успешно перемещено на экран {displayId}");
-                        }
-                        catch
-                        {
-                            System.Diagnostics.Debug.WriteLine($"Окно успешно перемещено на экран X={workArea.X}, Y={workArea.Y}");
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"Ошибка при проверке экрана: {ex.Message}");
-            }
-            }
-            else
-            {
-                System.Diagnostics.Debug.WriteLine("DisplayArea не найден, используем основной экран");
-            }
-            
-            // Полноэкранно на выбранном мониторе + AlwaysOnTop:
-            // обычный FullScreen перекрывается окнами, перетащенными на этот экран.
-            ApplyAlwaysOnTopProjectionSurface(appWindow, hwnd, targetDisplayArea);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Ошибка при установке полноэкранного режима: {ex.Message}");
-            // В случае ошибки — всё равно always-on-top на текущем/primary экране
-            try
-            {
-                var hwnd = WindowNative.GetWindowHandle(window);
-                var windowId = Win32Interop.GetWindowIdFromWindow(hwnd);
-                var appWindow = AppWindow.GetFromWindowId(windowId);
-                ApplyAlwaysOnTopProjectionSurface(appWindow, hwnd, DisplayArea.Primary);
-            }
-            catch
-            {
-                window.ExtendsContentIntoTitleBar = true;
-            }
-        }
-    }
-
-    private void ApplyAlwaysOnTopProjectionSurface(AppWindow appWindow, IntPtr hwnd, DisplayArea? displayArea)
-    {
-        var bounds = displayArea?.OuterBounds ?? DisplayArea.Primary.OuterBounds;
-
-        if (_window is not null)
-        {
-            _window.ExtendsContentIntoTitleBar = true;
-            // Без системного backdrop — иначе по краям/углам просвечивает светлая рамка WinUI.
-            _window.SystemBackdrop = null;
+            return;
         }
 
-        // Используем FullScreen presenter для истинного полноэкранного режима без рамок
-        appWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
+        StopTopMostKeeper();
+        _hotkeyDispatcher.DetachProjection();
+        if (_viewModel is not null)
+        {
+            _viewModel.BackgroundMediaChanged -= OnBackgroundMediaChanged;
+        }
 
-        // Windows 11: у overlapped-окон по умолчанию скруглённые углы — отключаем.
-        DisableProjectionWindowChrome(hwnd);
-
-        SetProjectionTopMost(hwnd);
-        StartTopMostKeeper(hwnd);
+        _windowWeb.Closed -= OnWindowClosed;
+        _windowWeb.DisposeAdapter();
+        _syncedBackgroundVideoPath = null;
+        _windowWeb = null;
+        ProjectionWindowVisibilityChanged?.Invoke(this, false);
     }
 
     private static void DisableProjectionWindowChrome(IntPtr hwnd)
@@ -1614,7 +1106,7 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
 
     private void OnTopMostTimerTick(DispatcherQueueTimer sender, object args)
     {
-        if (_projectionHwnd != IntPtr.Zero && _window is not null)
+        if (_projectionHwnd != IntPtr.Zero && _windowWeb is not null)
         {
             SetProjectionTopMost(_projectionHwnd);
         }

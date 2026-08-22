@@ -26,10 +26,14 @@
 
     <Grid>
         <ScrollViewer
+            x:Name="EditorScrollViewer"
             Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
             HorizontalScrollBarVisibility="Disabled"
-            VerticalScrollBarVisibility="Auto">
-            <Grid ColumnSpacing="16" RowSpacing="12" Padding="4">
+            HorizontalScrollMode="Disabled"
+            VerticalScrollBarVisibility="Hidden"
+            VerticalScrollMode="Enabled"
+            ZoomMode="Disabled">
+            <Grid ColumnSpacing="16" RowSpacing="12" Padding="4,4,12,4">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
@@ -89,20 +93,43 @@
                         </Button>
                     </StackPanel>
                 </StackPanel>
-                <ComboBox
-                    Header="Анимация смены слайда"
-                    HorizontalAlignment="Stretch"
-                    ItemsSource="{Binding SectionTransitionOptions}"
-                    SelectedItem="{Binding SelectedSectionTransition, Mode=TwoWay}"
-                    DisplayMemberPath="Title" />
-                <TextBlock
-                    FontSize="12"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Text="{Binding SelectedSectionTransition.Description}"
-                    TextWrapping="Wrap" />
-                <StackPanel
-                    Spacing="4"
-                    Visibility="{Binding IsTransitionSpeedVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+                <StackPanel Spacing="10">
+                    <TextBlock FontSize="14" FontWeight="SemiBold" Text="Подпись стиха Библии" />
+                    <TextBlock
+                        FontSize="12"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextWrapping="Wrap"
+                        Text="Ссылка на книгу, главу и стих (например «Быт 1:12»). Настройка хранится в этом стиле." />
+                    <CheckBox
+                        Content="Отображать подпись"
+                        IsChecked="{Binding ShowBibleReference, Mode=TwoWay}" />
+                    <ComboBox
+                        Header="Положение"
+                        HorizontalAlignment="Stretch"
+                        ItemsSource="{Binding BibleReferencePlacementOptions}"
+                        SelectedItem="{Binding SelectedBibleReferencePlacement, Mode=TwoWay}"
+                        DisplayMemberPath="Title"
+                        IsEnabled="{Binding ShowBibleReference}" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <TextBlock VerticalAlignment="Center" Text="Выравнивание" />
+                        <RadioButton Content="Слева" IsChecked="{Binding IsBibleRefAlignLeft, Mode=TwoWay}" IsEnabled="{Binding ShowBibleReference}" />
+                        <RadioButton Content="По центру" IsChecked="{Binding IsBibleRefAlignCenter, Mode=TwoWay}" IsEnabled="{Binding ShowBibleReference}" />
+                        <RadioButton Content="Справа" IsChecked="{Binding IsBibleRefAlignRight, Mode=TwoWay}" IsEnabled="{Binding ShowBibleReference}" />
+                    </StackPanel>
+                </StackPanel>
+                <StackPanel Spacing="8">
+                    <TextBlock FontSize="14" FontWeight="SemiBold" Text="Переход слайдов" />
+                    <ComboBox
+                        Header="Стиль перехода"
+                        HorizontalAlignment="Stretch"
+                        ItemsSource="{Binding TransitionStyleOptions}"
+                        SelectedItem="{Binding SelectedTransitionStyle, Mode=TwoWay}"
+                        DisplayMemberPath="Title" />
+                    <TextBlock
+                        FontSize="12"
+                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                        TextWrapping="Wrap"
+                        Text="{Binding SelectedTransitionStyle.Description}" />
                     <Grid>
                         <TextBlock VerticalAlignment="Center" Text="Скорость анимации" />
                         <TextBlock

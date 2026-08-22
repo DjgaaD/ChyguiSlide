@@ -129,8 +129,12 @@ public sealed partial class SettingsPage : Page
             return;
         }
 
+        var (width, height) = GetThemeEditorDialogSize();
         var editorPage = new ThemeEditorPage
         {
+            Width = width,
+            Height = height,
+            MaxHeight = height,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Stretch
         };
@@ -138,12 +142,15 @@ public sealed partial class SettingsPage : Page
         ViewModel.ThemePresetSaved += OnThemePresetSaved;
         ViewModel.ThemePresetDeleted += OnThemePresetDeleted;
 
-        var (width, height) = GetThemeEditorDialogSize();
+        // Фиксированный viewport: иначе ContentDialog даёт Page бесконечную высоту и ScrollViewer не скроллится
         var host = new Border
         {
             Width = width,
             Height = height,
-            Child = editorPage
+            MaxHeight = height,
+            Child = editorPage,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch
         };
         AppUiThemeApplier.ApplyToElement(host);
 
@@ -154,7 +161,7 @@ public sealed partial class SettingsPage : Page
             PrimaryButtonText = "Сохранить",
             CloseButtonText = "Закрыть",
             DefaultButton = ContentDialogButton.Primary,
-            FullSizeDesired = true,
+            FullSizeDesired = false,
             XamlRoot = XamlRoot
         };
 

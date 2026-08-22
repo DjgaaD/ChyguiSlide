@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChyguiSlide Projection</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #000;
+            /* В обычном Edge cursor:none работает. В WinUI WebView2 — нет:
+               курсор рисует хост, не страница. Скрытие делается в ProjectionWindowWeb (Win32). */
+            cursor: none !important;
+        }
+        *, *::before, *::after {
+            cursor: none !important;
+        }
+        #background {
+            position: absolute;
+            inset: 0;
+            background-color: #000;
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            overflow: hidden;
+            z-index: 0;
+        }
+        #bg-video {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: none;
+            pointer-events: none;
+        }
+        #stage {
+            position: absolute;
+            inset: 0;
+            z-index: 1;
+            overflow: hidden;
+        }
+        /* Типографика как в Win32 ProjectionStageView:
+           все строки одного кегля/цвета; у 2+ строки только opacity 0.85. */
+        .text-layer {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            text-align: center;
+            /* Margin="48,40" на SlideStage в Win32 */
+            padding: 40px 48px;
+            box-sizing: border-box;
+            will-change: opacity, transform, filter, clip-path;
+            color: #f5f2ea;
+            font-size: 48px;
+            font-family: 'Segoe UI', sans-serif;
+            font-weight: 400;
+            gap: 12px; /* ItemsPanel Spacing="12" */
+        }
+        .text-layer .line {
+            color: inherit;
+            font-size: 1em;
+            font-family: inherit;
+            font-weight: inherit;
+            line-height: 1.25;
+            text-shadow: inherit;
+            white-space: nowrap;
+            max-width: 100%;
+            opacity: 1;
+        }
+        /* Как в Win32: первая строка 1.0, остальные 0.85 (не путать с .reference) */
+        .text-layer .line ~ .line {
+            opacity: 0.85;
+        }
+        .text-layer .reference {
+            /* Кегль задаётся inline в px (фиксированный, как EdgeReferenceFontSize в Win32) */
+            font-size: 28px;
+            color: inherit;
+            opacity: 0.9;
+            font-family: inherit;
+            font-weight: inherit;
+            text-shadow: inherit;
+            white-space: normal;
+            max-width: 100%;
+            line-height: 1.25;
+        }
+        .text-layer .reference.align-left { text-align: left; align-self: stretch; }
+        .text-layer .reference.align-center { text-align: center; align-self: stretch; }
+        .text-layer .reference.align-right { text-align: right; align-self: stretch; }
+        .text-layer .reference.pos-top,
+        .text-layer .reference.pos-bottom {
+            position: absolute;
+            left: 48px;
+            right: 48px;
+            width: auto;
+        }
+        .text-layer .reference.pos-top { top: 40px; }
+        .text-layer .reference.pos-bottom { bottom: 40px; }
+        .text-layer.has-reference { gap: 16px; }
+    </style>
+</head>
+<body>
+    <div id="background">
+        <video id="bg-video" muted playsinline preload="auto"></video>
+    </div>
+    <div id="stage">
+        <div id="layer-a" class="text-layer" style="opacity:1;"></div>
+        <div id="layer-b" class="text-layer" style="opacity:0;"></div>
+    </div>
+    <script>
+        /**
+         * Переходы 01 / 03 / 05 / 07 — дословный порт из slide-transitions-demo.html.
+         * topmost/swapTopmost = currentLayer 'a'|'b'.
+         */
+        let currentLayer = 'a'; // какой слой сейчас «сверху» (видимый)
+        let transitionStyle = 'FadeSlide';
+        let transitionDurationMs = 350; // как selected в демо
+
+        const themeState = {
+            primaryColor: '#f5f2ea',
+            fontSize: 48,
+            fontFamily: "'Segoe UI', sans-serif",
+            fontWeight: 400,
+            textAlignment: 'center',
+            lineSpacing: 12,
+            textOutlineColor: '#000000',
+            textOutlineThickness: 0,
+            textOutlineOpacity: 1,
+            showBibleReference: false,
+            bibleReferencePlacement: 'Above',
+            bibleReferenceAlignment: 'Center',
+            referenceFontSize: 28
+        };
+
+        const layerA = document.getElementById('layer-a');
+        const layerB = document.getElementById('layer-b');
+        const background = document.getElementById('background');
+
+        function logToCSharp(message) {
+            if (window.chrome?.webview) {
+                window.chrome.webview.postMessage(JSON.stringify({ type: 'log', message }));
+            }
+        }
+
+        logToCSharp('[projection] layers ready');
+
+        if (window.chrome?.webview) {
+            window.chrome.webview.addEventListener('message', (e) => {
+                const data = e.data;
+                handleMessage(data);
+            });
+            logToCSharp('[projection] listener attached');
+        }
+
+        function handleMessage(data) {
+            if (!data || !data.type) return;
+            switch (data.type) {
+                case 'updateSlide':
+                    updateSlide(data);
+                    break;
+                case 'updateBackground':
+                    updateBackground(data);
+                    break;
+                case 'updateTheme':
+                    updateTheme(data);
+                    break;
+                case 'setTransitionStyle':
+                    transitionStyle = data.style || transitionStyle;
+                    logToCSharp('[projection] style=' + transitionStyle);
+                    break;
+                case 'setTransitionDuration':
+                    if (typeof data.durationMs === 'number' && data.durationMs > 0) {
+                        transitionDurationMs = data.durationMs;
+                    }
+                    break;
+            }
+        }
+
+        function sleep(ms) {
+            return new Promise(r => setTimeout(r, ms));
+        }
+
+        /** Два кадра — иначе WebView2 часто не рисует стартовый transform/blur до transition. */
+        function waitPaint() {
+            return new Promise(resolve => {
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(resolve);
+                });
+            });
+        }
+
+        function topmost() {
+            return currentLayer === 'a' ? [layerA, layerB] : [layerB, layerA];
+        }
+
+        function swapTopmost() {
+            currentLayer = currentLayer === 'a' ? 'b' : 'a';
+        }
+
+        function visibleLayer() {
+            return currentLayer === 'a' ? layerA : layerB;
+        }
+
+        function getDuration() {
+            return transitionDurationMs > 0 ? transitionDurationMs : 350;
+        }
+
+        function mergeThemeFrom(data) {
+            if (!data) return;
+            if (data.primaryColor) themeState.primaryColor = data.primaryColor;
+            if (typeof data.fontSize === 'number' && data.fontSize > 0) {
+                themeState.fontSize = data.fontSize;
+            }
+            if (data.fontFamily) themeState.fontFamily = data.fontFamily;
+            if (typeof data.fontWeight === 'number' && data.fontWeight > 0) {
+                themeState.fontWeight = data.fontWeight;
+            }
+            if (data.textAlignment) {
+                const a = String(data.textAlignment).toLowerCase();
+                themeState.textAlignment = a === 'left' || a === 'right' ? a : 'center';
+            }
+            if (typeof data.lineSpacing === 'number' && data.lineSpacing >= 0) {
+                themeState.lineSpacing = data.lineSpacing;
+            }
+            if (typeof data.showBibleReference === 'boolean') {
+                themeState.showBibleReference = data.showBibleReference;
+            }
+            if (data.bibleReferencePlacement) {
+                themeState.bibleReferencePlacement = String(data.bibleReferencePlacement);
+            }
+            if (data.bibleReferenceAlignment) {
+                const a = String(data.bibleReferenceAlignment);
+                themeState.bibleReferenceAlignment = a === 'Left' || a === 'Right' ? a : 'Center';
+            }
+            if (typeof data.referenceFontSize === 'number' && data.referenceFontSize > 0) {
+                themeState.referenceFontSize = data.referenceFontSize;
+            }
+            if (data.textOutlineColor) themeState.textOutlineColor = data.textOutlineColor;
+            if (typeof data.textOutlineThickness === 'number') {
+                themeState.textOutlineThickness = data.textOutlineThickness;
+            }
+            if (typeof data.textOutlineOpacity === 'number') {
+                themeState.textOutlineOpacity = Math.max(0, Math.min(1, data.textOutlineOpacity));
+            }
+        }
+
+        function parseColorToRgb(color) {
+            if (!color) return { r: 0, g: 0, b: 0 };
+            const s = String(color).trim();
+            const hex = s.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
+            if (hex) {
+                let h = hex[1];
+                if (h.length === 3) h = h.split('').map(c => c + c).join('');
+                return {
+                    r: parseInt(h.slice(0, 2), 16),
+                    g: parseInt(h.slice(2, 4), 16),
+                    b: parseInt(h.slice(4, 6), 16)
+                };
+            }
+            const rgb = s.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+            if (rgb) {
+                return { r: +rgb[1], g: +rgb[2], b: +rgb[3] };
+            }
+            return { r: 0, g: 0, b: 0 };
+        }
+
+        function rgba(color, alpha) {
+            const { r, g, b } = parseColorToRgb(color);
+            const a = Math.max(0, Math.min(1, alpha));
+            return `rgba(${r},${g},${b},${a})`;
+        }
+
+        /**
+         * Обводка как у Win2D OutlinedTextBlock: кольцо теней по периметру глифа
+         * + лёгкий -webkit-text-stroke для плотности. Лучше простого text-shadow blur.
+         */
+        function buildTextOutlineStyle(thickness, color, opacity) {
+            const depth =
+                '0 2px 14px rgba(0,0,0,0.45), 0 1px 2px rgba(0,0,0,0.55)';
+            if (!(thickness > 0)) {
+                return {
+                    webkitTextStroke: '0 transparent',
+                    paintOrder: 'normal',
+                    textShadow: depth
+                };
+            }
+
+            const t = Math.max(0.5, thickness);
+            const strokeColor = rgba(color, opacity);
+            const parts = [];
+            const steps = 16;
+            for (let i = 0; i < steps; i++) {
+                const a = (i / steps) * Math.PI * 2;
+                const x = Math.cos(a) * t;
+                const y = Math.sin(a) * t;
+                parts.push(`${x.toFixed(2)}px ${y.toFixed(2)}px 0 ${strokeColor}`);
+            }
+            parts.push(depth);
+
+            return {
+                // ~половина толщины: stroke идёт по контуру и внутрь/наружу
+                webkitTextStroke: `${Math.max(0.4, t * 0.45).toFixed(2)}px ${strokeColor}`,
+                paintOrder: 'stroke fill',
+                textShadow: parts.join(', ')
+            };
+        }
+
+        /** Тема «запекается» в слой — уходящий слайд сохраняет свой кегль/gap. */
+        function applyThemeToLayer(el, { applyLayout = true } = {}) {
+            el.style.color = themeState.primaryColor;
+            const outline = buildTextOutlineStyle(
+                themeState.textOutlineThickness,
+                themeState.textOutlineColor,
+                themeState.textOutlineOpacity ?? 1
+            );
+            el.style.webkitTextStroke = outline.webkitTextStroke;
+            el.style.paintOrder = outline.paintOrder;
+            el.style.textShadow = outline.textShadow;
+
+            if (!applyLayout) {
+                return;
+            }
+
+            el.style.fontFamily = themeState.fontFamily;
+            el.style.fontWeight = String(themeState.fontWeight);
+            el.style.textAlign = themeState.textAlignment;
+            el.style.alignItems =
+                themeState.textAlignment === 'left' ? 'flex-start'
+                : themeState.textAlignment === 'right' ? 'flex-end'
+                : 'center';
+            el.style.gap = `${themeState.lineSpacing}px`;
+            el.style.fontSize = `${themeState.fontSize}px`;
+        }
+
+        function fillLayer(el, lines, referenceCaption) {
+            applyThemeToLayer(el, { applyLayout: true });
+            const showRef = themeState.showBibleReference && referenceCaption;
+            const placement = themeState.bibleReferencePlacement || 'Above';
+            const alignClass =
+                themeState.bibleReferenceAlignment === 'Left' ? 'align-left'
+                : themeState.bibleReferenceAlignment === 'Right' ? 'align-right'
+                : 'align-center';
+
+            let refHtml = '';
+            if (showRef) {
+                let posClass = '';
+                if (placement === 'TopOfScreen') posClass = ' pos-top';
+                else if (placement === 'BottomOfScreen') posClass = ' pos-bottom';
+                // After ≈ Below в web (в Win32 After сейчас тоже скрыт)
+                refHtml = `<div class="reference ${alignClass}${posClass}" style="font-size:${themeState.referenceFontSize}px;">${escapeHtml(referenceCaption)}</div>`;
+                el.classList.add('has-reference');
+            } else {
+                el.classList.remove('has-reference');
+            }
+
+            let linesHtml = '';
+            (lines || []).forEach(line => {
+                linesHtml += `<div class="line">${escapeHtml(line)}</div>`;
+            });
+
+            if (!showRef) {
+                el.innerHTML = linesHtml;
+                return;
+            }
+
+            if (placement === 'Below' || placement === 'After' || placement === 'BottomOfScreen') {
+                el.innerHTML = linesHtml + refHtml;
+            } else {
+                // Above / TopOfScreen
+                el.innerHTML = refHtml + linesHtml;
+            }
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text ?? '';
+            return div.innerHTML;
+        }
+
+        let _busy = false;
+        let _pending = null;
+
+        async function updateSlide(data) {
+            // Кегль/цвет нового слайда — в state до анимации, на DOM только в fillLayer
+            mergeThemeFrom(data);
+
+            if (_busy) {
+                _pending = data;
+                return;
+            }
+            _busy = true;
+            try {
+                await playSlide(data);
+            } finally {
+                _busy = false;
+                if (_pending) {
+                    const next = _pending;
+                    _pending = null;
+                    await updateSlide(next);
+                }
+            }
+        }
+
+        async function playSlide(data) {
+            const style = transitionStyle || 'FadeSlide';
+            const lines = data.lines || [];
+            const caption = data.referenceCaption || null;
+            const dur = getDuration();
+
+            logToCSharp(`[projection] playSlide style=${style} dur=${dur} lines=${lines.length}`);
+
+            switch (style) {
+                case 'Fade':
+                case 'Crossfade':
+                    // Демо №02 Crossfade, длительность 500 мс
+                    await runCrossfade(lines, caption, 500);
+                    break;
+                case 'FadeSlide':
+                    await runFadeSlide(lines, caption, dur);
+                    break;
+                case 'BlurSharp':
+                    await runBlur(lines, caption, dur);
+                    break;
+                case 'Stagger':
+                    await runStagger(lines, caption, dur);
+                    break;
+                default:
+                    await runFadeSlide(lines, caption, dur);
+                    break;
+            }
+        }
+
+        /* ---------- 02: crossfade — как slide-transitions-demo.html runCrossfade ----------
+         * Два слоя одновременно: top → 0, bottom → 1, cubic-bezier(0.4,0,0.2,1), dur целиком.
+         */
+        async function runCrossfade(lines, caption, dur) {
+            const [top, bottom] = topmost();
+
+            if (!top.querySelector('.line') && !top.querySelector('.reference')) {
+                top.style.transition = 'none';
+                fillLayer(top, lines, caption);
+                top.style.opacity = 1;
+                top.style.transform = 'none';
+                top.style.filter = 'none';
+                top.style.clipPath = 'none';
+                bottom.style.transition = 'none';
+                bottom.style.opacity = 0;
+                return;
+            }
+
+            fillLayer(bottom, lines, caption);
+            bottom.style.transition = 'none';
+            bottom.style.opacity = 0;
+            bottom.style.transform = 'none';
+            bottom.style.filter = 'none';
+            bottom.style.clipPath = 'none';
+
+            top.style.transition = 'none';
+            top.style.transform = 'none';
+            top.style.filter = 'none';
+            top.style.clipPath = 'none';
+            void bottom.offsetHeight;
+            void top.offsetHeight;
+            await waitPaint();
+
+            logToCSharp(`[projection] Crossfade dur=${dur}`);
+
+            const easing = `${dur}ms cubic-bezier(0.4,0,0.2,1)`;
+            top.style.transition = `opacity ${easing}`;
+            bottom.style.transition = `opacity ${easing}`;
+            top.style.opacity = 0;
+            bottom.style.opacity = 1;
+            await sleep(dur);
+            swapTopmost();
+        }
+
+        /* (старый ensureFadeLayerIsA больше не нужен — Crossfade крутит оба слоя) */
+        /* ---------- 03: fade + slide — как slide-transitions-demo.html runFadeSlide ----------
+         * Алгоритм 1:1 с демо. Смещения 18px / −14px в демо даны для сцены ~280px;
+         * на полном экране те же px почти не видны → масштабируем по высоте #stage.
+         * waitPaint после стартового кадра — иначе WebView2 часто пропускает translateY(start).
+         */
+        async function runFadeSlide(lines, caption, dur) {
+            const [top, bottom] = topmost();
+
+            // Первый показ — без анимации (в демо stage уже заполнен)
+            if (!top.querySelector('.line')) {
+                top.style.transition = 'none';
+                fillLayer(top, lines, caption);
+                top.style.opacity = 1;
+                top.style.transform = 'translateY(0px)';
+                top.style.filter = 'none';
+                top.style.clipPath = 'none';
+                bottom.style.transition = 'none';
+                bottom.style.opacity = 0;
+                bottom.style.transform = 'translateY(0px)';
+                return;
+            }
+
+            // Демо: stage ≈ 280px высоты → 18px и 14px. Масштаб = наша высота / 280.
+            const demoStageH = 280;
+            const stageH = (document.getElementById('stage')?.clientHeight) || demoStageH;
+            const k = stageH / demoStageH;
+            const yIn = 18 * k;   // входящий снизу
+            const yOut = 14 * k;  // уходящий вверх
+
+            fillLayer(bottom, lines, caption);
+
+            // Стартовый кадр (как в демо + явный ноль у top, чтобы transition с чего анимировать)
+            top.style.transition = 'none';
+            top.style.filter = 'none';
+            top.style.clipPath = 'none';
+            top.style.transform = 'translateY(0px)';
+            // opacity top уже 1
+
+            bottom.style.transition = 'none';
+            bottom.style.opacity = 0;
+            bottom.style.transform = `translateY(${yIn}px)`;
+            bottom.style.filter = 'none';
+            bottom.style.clipPath = 'none';
+            void bottom.offsetHeight;
+            void top.offsetHeight;
+            await waitPaint();
+
+            logToCSharp(`[projection] FadeSlide stageH=${stageH} k=${k.toFixed(2)} yIn=${yIn.toFixed(1)} yOut=${yOut.toFixed(1)} dur=${dur}`);
+
+            const easing = `${dur}ms cubic-bezier(0.22,0.61,0.36,1)`;
+            top.style.transition = `opacity ${easing}, transform ${easing}`;
+            bottom.style.transition = `opacity ${easing}, transform ${easing}`;
+            top.style.opacity = 0;
+            top.style.transform = `translateY(${-yOut}px)`;
+            bottom.style.opacity = 1;
+            bottom.style.transform = 'translateY(0px)';
+            await sleep(dur);
+            top.style.transition = 'none';
+            top.style.transform = 'translateY(0px)';
+            swapTopmost();
+        }
+
+        /* ---------- 05: blur → sharp — как slide-transitions-demo.html runBlur ----------
+         * Алгоритм 1:1 с демо. blur(10px)/blur(6px) в демо для сцены ~280px;
+         * на полном экране масштабируем (как translateY у FadeSlide).
+         */
+        async function runBlur(lines, caption, dur) {
+            const [top, bottom] = topmost();
+
+            if (!top.querySelector('.line')) {
+                top.style.transition = 'none';
+                fillLayer(top, lines, caption);
+                top.style.opacity = 1;
+                top.style.transform = 'none';
+                top.style.filter = 'blur(0px)';
+                top.style.clipPath = 'none';
+                bottom.style.transition = 'none';
+                bottom.style.opacity = 0;
+                bottom.style.filter = 'blur(0px)';
+                return;
+            }
+
+            const demoStageH = 280;
+            const stageH = (document.getElementById('stage')?.clientHeight) || demoStageH;
+            const k = stageH / demoStageH;
+            const blurIn = 10 * k;  // входящий старт
+            const blurOut = 6 * k; // уходящий в конце
+
+            fillLayer(bottom, lines, caption);
+
+            top.style.transition = 'none';
+            top.style.transform = 'none';
+            top.style.clipPath = 'none';
+            // blur(0px), не none — иначе WebView2/Chrome плохо интерполируют filter
+            top.style.filter = 'blur(0px)';
+
+            bottom.style.transition = 'none';
+            bottom.style.opacity = 0;
+            bottom.style.transform = 'none';
+            bottom.style.filter = `blur(${blurIn}px)`;
+            bottom.style.clipPath = 'none';
+            void bottom.offsetHeight;
+            void top.offsetHeight;
+            await waitPaint();
+
+            logToCSharp(`[projection] Blur stageH=${stageH} k=${k.toFixed(2)} blurIn=${blurIn.toFixed(1)} blurOut=${blurOut.toFixed(1)} dur=${dur}`);
+
+            const easing = `${dur}ms ease-out`;
+            top.style.transition = `opacity ${easing}, filter ${easing}`;
+            bottom.style.transition = `opacity ${easing}, filter ${easing}`;
+            top.style.opacity = 0;
+            top.style.filter = `blur(${blurOut}px)`;
+            bottom.style.opacity = 1;
+            bottom.style.filter = 'blur(0px)';
+            await sleep(dur);
+            top.style.transition = 'none';
+            top.style.filter = 'blur(0px)';
+            swapTopmost();
+        }
+
+        /* ---------- 07: line-by-line stagger — как slide-transitions-demo.html runStagger ----------
+         * Алгоритм 1:1: построчный stagger 90ms, easing как у FadeSlide.
+         * translateY(14px)/(-10px) масштабируем по сцене; в анимацию входят .reference и .line.
+         */
+        async function runStagger(lines, caption, dur) {
+            const [top, bottom] = topmost();
+
+            if (!top.querySelector('.line') && !top.querySelector('.reference')) {
+                top.style.transition = 'none';
+                fillLayer(top, lines, caption);
+                top.style.opacity = 1;
+                top.style.transform = 'none';
+                top.style.filter = 'none';
+                top.style.clipPath = 'none';
+                bottom.style.transition = 'none';
+                bottom.style.opacity = 0;
+                return;
+            }
+
+            const demoStageH = 280;
+            const stageH = (document.getElementById('stage')?.clientHeight) || demoStageH;
+            const k = stageH / demoStageH;
+            const yIn = 14 * k;
+            const yOut = 10 * k;
+            const stagger = 90;
+
+            fillLayer(bottom, lines, caption);
+            // .reference тоже участвует — иначе подпись вспыхивает сразу при opacity слоя = 1
+            const bLines = bottom.querySelectorAll('.reference, .line');
+            const tLines = top.querySelectorAll('.reference, .line');
+
+            bottom.style.transition = 'none';
+            bottom.style.opacity = 1;
+            bottom.style.transform = 'none';
+            bottom.style.filter = 'none';
+            bottom.style.clipPath = 'none';
+
+            tLines.forEach(l => {
+                l.style.transition = 'none';
+                l.style.opacity = 1;
+                l.style.transform = 'translateY(0px)';
+            });
+            bLines.forEach(l => {
+                l.style.transition = 'none';
+                l.style.opacity = 0;
+                l.style.transform = `translateY(${yIn}px)`;
+            });
+            void bottom.offsetHeight;
+            void top.offsetHeight;
+            await waitPaint();
+
+            logToCSharp(`[projection] Stagger stageH=${stageH} k=${k.toFixed(2)} yIn=${yIn.toFixed(1)} yOut=${yOut.toFixed(1)} t=${tLines.length} b=${bLines.length} dur=${dur}`);
+
+            const easing = `${dur}ms cubic-bezier(0.22,0.61,0.36,1)`;
+            tLines.forEach((l, idx) => {
+                l.style.transition = `opacity ${easing}, transform ${easing}`;
+                setTimeout(() => {
+                    l.style.opacity = 0;
+                    l.style.transform = `translateY(${-yOut}px)`;
+                }, idx * stagger);
+            });
+            bLines.forEach((l, idx) => {
+                l.style.transition = `opacity ${easing}, transform ${easing}`;
+                setTimeout(() => {
+                    l.style.opacity = 1;
+                    l.style.transform = 'translateY(0px)';
+                }, idx * stagger);
+            });
+
+            const steps = Math.max(tLines.length, bLines.length, 1) - 1;
+            await sleep(dur + steps * stagger);
+
+            tLines.forEach(l => { l.style.transform = 'translateY(0px)'; });
+            // Скрываем ушедший слой целиком (в демо фиксировано 2 строки; у нас число строк разное)
+            top.style.transition = 'none';
+            top.style.opacity = 0;
+            tLines.forEach(l => {
+                l.style.transition = '';
+                l.style.opacity = '';
+                l.style.transform = '';
+            });
+            bLines.forEach(l => {
+                l.style.transition = '';
+                l.style.opacity = '';
+                l.style.transform = '';
+            });
+            swapTopmost();
+        }
+
+        function updateBackground(data) {
+            const { color, imageUrl, videoUrl, loop } = data;
+            const video = document.getElementById('bg-video');
+            if (color) {
+                background.style.backgroundColor = color;
+            }
+
+            if (videoUrl) {
+                background.style.backgroundImage = 'none';
+                video.style.display = 'block';
+                video.loop = loop !== false;
+                video.muted = true;
+                if (video.dataset.src !== videoUrl) {
+                    video.dataset.src = videoUrl;
+                    video.src = videoUrl;
+                    video.load();
+                }
+                const playPromise = video.play();
+                if (playPromise && typeof playPromise.catch === 'function') {
+                    playPromise.catch(() => {});
+                }
+                return;
+            }
+
+            video.pause();
+            if (video.dataset.src) {
+                delete video.dataset.src;
+                video.removeAttribute('src');
+                video.load();
+            }
+            video.style.display = 'none';
+
+            if (imageUrl) {
+                background.style.backgroundImage = `url("${imageUrl}")`;
+            } else {
+                background.style.backgroundImage = 'none';
+            }
+        }
+
+        function updateTheme(data) {
+            mergeThemeFrom(data);
+            // На видимый слой — только цвет/обводка. Кегль, gap, weight, align
+            // только в fillLayer (иначе уходящий текст «сжимается» до анимации).
+            if (!_busy) {
+                applyThemeToLayer(visibleLayer(), { applyLayout: false });
+            }
+        }
+    </script>
+</body>
+</html>

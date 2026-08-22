@@ -1,18 +1,16 @@
 using ChyguiSlide.ViewModels;
-using ChyguiSlide.Windows;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
 namespace ChyguiSlide.Controls;
 
 /// <summary>
-/// Единственная сцена проекции: и окно трансляции, и превью оператора
-/// используют один и тот же экземпляр (пересадка в дерево + зеркало кадра).
+/// Сцена превью программы в Live Control (зеркало текущего слайда).
+/// Вывод на экран проекции — только WebView2 (<see cref="ChyguiSlide.Windows.ProjectionWindowWeb"/>).
 /// </summary>
 public sealed partial class ProjectionStageView : UserControl
 {
     private MediaPlayerElement? _currentVideoPlayer;
-    private ProjectionTransitionPlayer? _transitionPlayer;
 
     public ProjectionDisplayViewModel ViewModel { get; private set; } = null!;
 
@@ -34,33 +32,16 @@ public sealed partial class ProjectionStageView : UserControl
         Unloaded += ProjectionStageView_Unloaded;
     }
 
-    public void BindViewModel(ProjectionDisplayViewModel viewModel, bool enableTransitionPlayer = true)
+    public void BindViewModel(ProjectionDisplayViewModel viewModel)
     {
         ViewModel = viewModel;
         DataContext = viewModel;
         ProjectionRoot.DataContext = viewModel;
 
-        ChyguiSlide.Data.InteractionLogger.Log("ProjectionStageView BindViewModel: enableTransitionPlayer=" + enableTransitionPlayer);
-
-        if (enableTransitionPlayer)
-        {
-            _transitionPlayer ??= new ProjectionTransitionPlayer(
-                IncomingSlideLayer,
-                OutgoingSlideLayer);
-
-            viewModel.SetTransitionPlayer(
-                (mode, apply) =>
-                    _transitionPlayer.PlayAsync(mode, apply, viewModel.SectionTransitionDurationMs),
-                () => _transitionPlayer.ResetVisualState());
-        }
+        ChyguiSlide.Data.InteractionLogger.Log("ProjectionStageView BindViewModel");
 
         ProjectionRoot.SizeChanged -= OnProjectionRootSizeChanged;
         ProjectionRoot.SizeChanged += OnProjectionRootSizeChanged;
-    }
-
-    public void UnbindTransitionPlayer()
-    {
-        ViewModel?.SetTransitionPlayer(null);
     }
 
     public void SetVideoPlayer(MediaPlayerElement? videoPlayer)

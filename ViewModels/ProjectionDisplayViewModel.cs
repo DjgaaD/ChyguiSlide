@@ -31,8 +31,6 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
     private ThemeColors _currentColors = ThemeColors.Default;
     private ThemePreset? _appliedTheme;
     private ThemeWallpaperPool? _activeWallpaperPool;
-    private Func<SectionTransitionMode, Func<Task>, Task>? _playTransitionAsync;
-    private Action? _resetTransitionVisuals;
     private int _linesApplyVersion;
     private string _lastVisibleLinesKey = string.Empty;
     private Guid? _lastSongId;
@@ -48,7 +46,8 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
     public ObservableCollection<ProjectionLineItem> OutgoingLines { get; } = new();
 
     [ObservableProperty]
-    private SectionTransitionMode sectionTransitionMode = SectionTransitionMode.CrossFade;
+    private TransitionStyle transitionStyle = TransitionStyle.FadeSlide;
+
 
     [ObservableProperty]
     private int sectionTransitionDurationMs = 750;
@@ -182,19 +181,13 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
         && !string.IsNullOrWhiteSpace(OutgoingReferenceCaption)
         && BibleReferencePlacement == BibleReferencePlacement.BottomOfScreen;
 
-    public double OutgoingReferenceFontSize =>
-        BibleReferencePlacement.IsPinnedToScreenEdge()
-            ? EdgeReferenceFontSize
-            : Math.Max(22, OutgoingDisplayFontSize * 0.38);
-
     /// <summary>
-    /// Кегль подписи у краёв экрана — фиксированный от высоты экрана (не от кегля стиха).
-    /// Над/под текстом — доля от кегля стиха.
+    /// Кегль подписи — фиксированный от высоты экрана (не от кегля стиха),
+    /// чтобы подпись не «прыгала» при смене длины стиха.
     /// </summary>
-    public double ReferenceFontSize =>
-        BibleReferencePlacement.IsPinnedToScreenEdge()
-            ? EdgeReferenceFontSize
-            : Math.Max(22, DisplayFontSize * 0.38);
+    public double ReferenceFontSize => EdgeReferenceFontSize;
+
+    public double OutgoingReferenceFontSize => EdgeReferenceFontSize;
 
     private double EdgeReferenceFontSize =>
         Math.Clamp(DesignHeight > 1 ? DesignHeight * 0.032 : 28, 22, 42);
@@ -386,8 +379,15 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
         TextAlignment = theme?.TextAlignment ?? "Center";
         System.Diagnostics.Debug.WriteLine($"ApplyTheme: TextAlignment установлен: {TextAlignment}");
 
-        SectionTransitionMode = NormalizeTransition(theme?.SectionTransitionMode);
+        TransitionStyle = theme?.TransitionStyle ?? TransitionStyle.FadeSlide;
         SectionTransitionDurationMs = NormalizeTransitionDuration(theme?.SectionTransitionDurationMs);
+
+        ShowBibleReference = theme?.ShowBibleReference == true;
+        BibleReferencePlacement = theme?.BibleReferencePlacement ?? BibleReferencePlacement.Above;
+        BibleReferenceAlignment = string.IsNullOrWhiteSpace(theme?.BibleReferenceAlignment)
+            ? "Center"
+            : theme!.BibleReferenceAlignment;
+        NotifyReferenceVisibility();
 
         BackgroundBrush = CreateBrush(colors.Background);
         PrimaryBrush = CreateBrush(colors.Primary);
@@ -416,8 +416,35 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
             ApplyResolvedBackground(forceNewRandom: startNewBackgroundSession);
         }
 
-        // Тема применяется без анимации смены слайда
-        RefreshLines(_projectionStateService.Current.VisibleLines);
+        // Повторное применение того же стиля (например вход в Настройки) не должно
+        // перезапускать Web-переход текущего слайда.
+        var sameTheme =
+            !startNewBackgroundSession
+            && theme is not null
+            && previousThemeId == theme.Id;
+
+        if (!sameTheme)
+        {
+            RefreshLines(_projectionStateService.Current.VisibleLines);
+        }
+        else
+        {
+            // Обновить кисти/выравнивание на уже показанных строках без Clear/Add.
+            foreach (var line in Lines)
+            {
+                line.Foreground = PrimaryBrush;
+                line.FontWeight = FontWeight;
+                line.TextAlignment = TextAlignment;
+            }
+
+            OnPropertyChanged(nameof(DisplayFontSize));
+            OnPropertyChanged(nameof(LineSpacing));
+            OnPropertyChanged(nameof(FontFamilyName));
+            OnPropertyChanged(nameof(PrimaryBrush));
+            OnPropertyChanged(nameof(TextOutlineBrush));
+            OnPropertyChanged(nameof(TextOutlineThickness));
+            OnPropertyChanged(nameof(TextOutlineOpacity));
+        }
     }
 
     /// <summary>Пересчитать фон под текущий контент (песня / Библия).</summary>
@@ -635,21 +662,12 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
         }
     }
 
-    public void SetTransitionPlayer(
-        Func<SectionTransitionMode, Func<Task>, Task>? playTransitionAsync,
-        Action? resetTransitionVisuals = null)
-    {
-        _playTransitionAsync = playTransitionAsync;
-        _resetTransitionVisuals = resetTransitionVisuals;
-    }
-
     /// <summary>
-    /// Гарантирует видимость текста: сброс opacity слоёв + перерисовка текущего слайда.
+    /// Гарантирует видимость текста: перерисовка текущего слайда.
     /// Нужен после сбоя fade и при повторном F5, когда StateChanged не приходит.
     /// </summary>
     public void EnsureContentVisible()
     {
-        _resetTransitionVisuals?.Invoke();
         var state = _projectionStateService.Current;
         ReferenceCaption = state.ReferenceCaption;
         NotifyReferenceVisibility();
@@ -660,7 +678,10 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
     {
         if (mode is SectionTransitionMode.None
             or SectionTransitionMode.CrossFade
-            or SectionTransitionMode.FadeThrough)
+            or SectionTransitionMode.FadeThrough
+            or SectionTransitionMode.FadeSlide
+            or SectionTransitionMode.BlurSharp
+            or SectionTransitionMode.Stagger)
         {
             return mode.Value;
         }
@@ -717,12 +738,7 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
             _lastSongId = state.SongId;
         }
 
-        var shouldAnimate = !string.Equals(linesKey, _lastVisibleLinesKey, StringComparison.Ordinal)
-            && !IsBlackout
-            && SectionTransitionMode != SectionTransitionMode.None
-            && _playTransitionAsync is not null
-            && !string.IsNullOrEmpty(_lastVisibleLinesKey)
-            && Lines.Count > 0; // первый слайд / пустой экран — без кроссфейда (иначе белая вспышка)
+        var shouldAnimate = false; // Composition-переходы удалены; анимация — в WebView2
 
         System.Diagnostics.Debug.WriteLine($"[ProjectionDisplayViewModel] UpdateFromState: linesKey={linesKey}, _lastVisibleLinesKey={_lastVisibleLinesKey}, shouldAnimate={shouldAnimate}");
         ChyguiSlide.Data.InteractionLogger.Log($"ProjectionDisplayViewModel.UpdateFromState: linesKey={linesKey}, _lastVisibleLinesKey={_lastVisibleLinesKey}, shouldAnimate={shouldAnimate}");
@@ -782,35 +798,16 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
             }
         }
 
-        if (!animate || _playTransitionAsync is null || SectionTransitionMode == SectionTransitionMode.None)
+        if (!animate)
         {
             System.Diagnostics.Debug.WriteLine($"[ProjectionDisplayViewModel] ApplyVisibleLinesAsync: no animation, calling ApplyCoreAsync directly");
             ChyguiSlide.Data.InteractionLogger.Log($"ProjectionDisplayViewModel.ApplyVisibleLinesAsync: no animation, calling ApplyCoreAsync directly");
-            ClearOutgoingSnapshot();
             await ApplyCoreAsync().ConfigureAwait(true);
             return;
         }
 
-        System.Diagnostics.Debug.WriteLine($"[ProjectionDisplayViewModel] ApplyVisibleLinesAsync: animation enabled, SectionTransitionMode={SectionTransitionMode}");
-        ChyguiSlide.Data.InteractionLogger.Log($"ProjectionDisplayViewModel.ApplyVisibleLinesAsync: animation enabled, SectionTransitionMode={SectionTransitionMode}");
-
-        if (SectionTransitionMode == SectionTransitionMode.CrossFade)
-        {
-            CaptureOutgoingSnapshot();
-        }
-        else
-        {
-            ClearOutgoingSnapshot();
-        }
-
-        try
-        {
-            await _playTransitionAsync(SectionTransitionMode, ApplyCoreAsync).ConfigureAwait(true);
-        }
-        finally
-        {
-            ClearOutgoingSnapshot();
-        }
+        // Анимация Composition больше не используется — контент обновляется сразу.
+        await ApplyCoreAsync().ConfigureAwait(true);
     }
 
     private void CaptureOutgoingSnapshot()
@@ -855,13 +852,21 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
 
     public async Task RefreshBibleReferenceSettingsAsync()
     {
+        // Подпись теперь в ThemePreset — при открытии проекции уже ApplyTheme.
+        // Оставляем метод для совместимости вызовов: подтягиваем из применённой темы.
         try
         {
-            ShowBibleReference = await _displaySettingsService.GetShowBibleReferenceAsync();
-            BibleReferencePlacement = await _displaySettingsService.GetBibleReferencePlacementAsync();
-            BibleReferenceAlignment = await _displaySettingsService.GetBibleReferenceAlignmentAsync();
-            NotifyReferenceVisibility();
-            RelayoutCurrentSlideForReference();
+            if (_appliedTheme is not null)
+            {
+                ShowBibleReference = _appliedTheme.ShowBibleReference;
+                BibleReferencePlacement = _appliedTheme.BibleReferencePlacement;
+                BibleReferenceAlignment = string.IsNullOrWhiteSpace(_appliedTheme.BibleReferenceAlignment)
+                    ? "Center"
+                    : _appliedTheme.BibleReferenceAlignment;
+                NotifyReferenceVisibility();
+            }
+
+            await Task.CompletedTask;
         }
         catch (Exception ex)
         {
@@ -876,12 +881,10 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
     {
         ShowBibleReference = show;
         BibleReferencePlacement = placement;
-        BibleReferenceAlignment = alignment;
+        BibleReferenceAlignment = string.IsNullOrWhiteSpace(alignment) ? "Center" : alignment;
         NotifyReferenceVisibility();
-        await _displaySettingsService.SetShowBibleReferenceAsync(show);
-        await _displaySettingsService.SetBibleReferencePlacementAsync(placement);
-        await _displaySettingsService.SetBibleReferenceAlignmentAsync(alignment);
         RelayoutCurrentSlideForReference();
+        await Task.CompletedTask;
     }
 
     private void NotifyReferenceVisibility()

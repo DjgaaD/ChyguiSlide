@@ -9,6 +9,7 @@ using ChyguiSlide.Data;
 using ChyguiSlide.Services;
 using ChyguiSlide.Services.Abstractions;
 using ChyguiSlide.Services.Implementations;
+using ChyguiSlide.Services.Models;
 using ChyguiSlide.ViewModels;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -99,25 +100,25 @@ namespace ChyguiSlide
                     LogToFile(databaseCreated
                         ? "База данных создана впервые"
                         : "База данных уже существует");
-                    
-                        LogToFile("Применение миграций...");
-                        // Простая блокировка на уровне файла, чтобы избежать гонок при одновременном запуске приложений
-                        var lockPath = ChyguiSlide.Data.AppPaths.GetLockPath("migrations");
-                        try
+
+                    LogToFile("Применение легковесных миграций...");
+                    // Простая блокировка на уровне файла, чтобы избежать гонок при одновременном запуске приложений
+                    var lockPath = ChyguiSlide.Data.AppPaths.GetLockPath("migrations");
+                    try
+                    {
+                        using (var fs = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
                         {
-                            using (var fs = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None))
-                            {
-                                ApplyLightweightMigrations(db);
-                            }
-                        }
-                        catch (IOException)
-                        {
-                            // Если не удалось получить эксклюзивный доступ — ждём и повторяем одну попытку
-                            await Task.Delay(500);
                             ApplyLightweightMigrations(db);
                         }
+                    }
+                    catch (IOException)
+                    {
+                        // Если не удалось получить эксклюзивный доступ — ждём и повторяем одну попытку
+                        await Task.Delay(500);
+                        ApplyLightweightMigrations(db);
+                    }
 
-                        LogToFile("Миграции применены");
+                    LogToFile("Легковесные миграции применены");
 
                     // Сид только при первом создании БД — не при каждом запуске
                     if (databaseCreated)
@@ -828,6 +829,10 @@ namespace ChyguiSlide
             EnsureThemePresetColumn(connection, "SelectedSongWallpaperId", "ALTER TABLE ThemePresets ADD COLUMN SelectedSongWallpaperId TEXT NULL;");
             EnsureThemePresetColumn(connection, "SelectedBibleWallpaperId", "ALTER TABLE ThemePresets ADD COLUMN SelectedBibleWallpaperId TEXT NULL;");
             EnsureThemePresetColumn(connection, "SectionTransitionDurationMs", "ALTER TABLE ThemePresets ADD COLUMN SectionTransitionDurationMs INTEGER NOT NULL DEFAULT 750;");
+            EnsureThemePresetColumn(connection, "ShowBibleReference", "ALTER TABLE ThemePresets ADD COLUMN ShowBibleReference INTEGER NOT NULL DEFAULT 0;");
+            EnsureThemePresetColumn(connection, "BibleReferencePlacement", "ALTER TABLE ThemePresets ADD COLUMN BibleReferencePlacement INTEGER NOT NULL DEFAULT 0;");
+            EnsureThemePresetColumn(connection, "BibleReferenceAlignment", "ALTER TABLE ThemePresets ADD COLUMN BibleReferenceAlignment TEXT NOT NULL DEFAULT 'Center';");
+            MigrateGlobalBibleReferenceToThemes(connection);
 
             using (var createWallpapers = connection.CreateCommand())
             {
@@ -954,6 +959,12 @@ namespace ChyguiSlide
                         ON Announcements (IsPinned, SortOrder, UpdatedAt);";
                 createAnnouncements.ExecuteNonQuery();
             }
+
+            // Добавляем колонку TransitionStyle в ThemePresets.
+            // DEFAULT 1 = FadeSlide только для НОВЫХ строк.
+            // Нельзя UPDATE'ить 0→1 или 2→1 при каждом запуске: 0=Fade и 2=BlurSharp —
+            // валидные значения, из‑за этого стиль всегда сбрасывался на Fade+Slide.
+            EnsureThemePresetColumn(connection, "TransitionStyle", "ALTER TABLE ThemePresets ADD COLUMN TransitionStyle INTEGER NOT NULL DEFAULT 1;");
         }
         finally
         {
@@ -986,6 +997,85 @@ namespace ChyguiSlide
         using var alter = connection.CreateCommand();
         alter.CommandText = alterSql;
         alter.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Один раз копирует глобальные настройки подписи Библии из display-settings.json во все стили.
+    /// </summary>
+    private static void MigrateGlobalBibleReferenceToThemes(DbConnection connection)
+    {
+        const string flagKey = "BibleReferenceMigratedToThemes";
+        try
+        {
+            var settingsPath = Path.Combine(AppPaths.GetLocalAppDataRoot(), "display-settings.json");
+            Dictionary<string, string>? settings = null;
+            if (File.Exists(settingsPath))
+            {
+                try
+                {
+                    settings = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(
+                        File.ReadAllText(settingsPath));
+                }
+                catch
+                {
+                    settings = null;
+                }
+            }
+
+            settings ??= new Dictionary<string, string>();
+            if (settings.TryGetValue(flagKey, out var flag)
+                && (string.Equals(flag, "1", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(flag, "True", StringComparison.OrdinalIgnoreCase)))
+            {
+                return;
+            }
+
+            var show = settings.TryGetValue("ShowBibleReference", out var showRaw)
+                && string.Equals(showRaw, "True", StringComparison.OrdinalIgnoreCase);
+
+            var placementRaw = settings.TryGetValue("BibleReferencePlacement", out var pr) ? pr : "Above";
+            if (!Enum.TryParse<BibleReferencePlacement>(placementRaw, true, out var placement))
+            {
+                placement = BibleReferencePlacement.Above;
+            }
+
+            var alignment = settings.TryGetValue("BibleReferenceAlignment", out var ar) ? ar : "Center";
+            if (alignment is not ("Left" or "Center" or "Right"))
+            {
+                alignment = "Center";
+            }
+
+            using (var update = connection.CreateCommand())
+            {
+                update.CommandText = @"
+                    UPDATE ThemePresets
+                    SET ShowBibleReference = @show,
+                        BibleReferencePlacement = @placement,
+                        BibleReferenceAlignment = @alignment;";
+                var pShow = update.CreateParameter();
+                pShow.ParameterName = "@show";
+                pShow.Value = show ? 1 : 0;
+                update.Parameters.Add(pShow);
+                var pPlace = update.CreateParameter();
+                pPlace.ParameterName = "@placement";
+                pPlace.Value = (int)placement;
+                update.Parameters.Add(pPlace);
+                var pAlign = update.CreateParameter();
+                pAlign.ParameterName = "@alignment";
+                pAlign.Value = alignment;
+                update.Parameters.Add(pAlign);
+                update.ExecuteNonQuery();
+            }
+
+            settings[flagKey] = "True";
+            File.WriteAllText(
+                settingsPath,
+                System.Text.Json.JsonSerializer.Serialize(settings, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"MigrateGlobalBibleReferenceToThemes: {ex.Message}");
+        }
     }
 
     /// <summary>Переносит BackgroundMediaPath в ThemeWallpapers без SQL-функций, которых нет в bundled SQLite.</summary>

@@ -10,7 +10,10 @@ public enum AppHotkeyAction
     EndShow,
     NextSlide,
     PreviousSlide,
-    FocusBibleSearch
+    FocusBibleSearch,
+    GoToCatalog,
+    GoToBible,
+    GoToAnnouncements
 }
 
 public sealed class HotkeyBinding : IEquatable<HotkeyBinding>
@@ -30,6 +33,9 @@ public sealed class HotkeyBinding : IEquatable<HotkeyBinding>
         AppHotkeyAction.NextSlide => Create(VirtualKey.Right),
         AppHotkeyAction.PreviousSlide => Create(VirtualKey.Left),
         AppHotkeyAction.FocusBibleSearch => Create(VirtualKey.F4),
+        AppHotkeyAction.GoToCatalog => Create(VirtualKey.F1),
+        AppHotkeyAction.GoToBible => Create(VirtualKey.F2),
+        AppHotkeyAction.GoToAnnouncements => Create(VirtualKey.F3),
         _ => Create(VirtualKey.None)
     };
 
@@ -40,6 +46,9 @@ public sealed class HotkeyBinding : IEquatable<HotkeyBinding>
         AppHotkeyAction.NextSlide => "Следующий слайд",
         AppHotkeyAction.PreviousSlide => "Предыдущий слайд",
         AppHotkeyAction.FocusBibleSearch => "Поиск в текущем разделе",
+        AppHotkeyAction.GoToCatalog => "Раздел «Песни»",
+        AppHotkeyAction.GoToBible => "Раздел «Библия»",
+        AppHotkeyAction.GoToAnnouncements => "Раздел «Объявления»",
         _ => action.ToString()
     };
 
@@ -50,6 +59,9 @@ public sealed class HotkeyBinding : IEquatable<HotkeyBinding>
         AppHotkeyAction.NextSlide => "Следующий слайд; у песни на последнем — закрывает показ; у Библии — следующая глава.",
         AppHotkeyAction.PreviousSlide => "Переключает на предыдущий слайд или песню.",
         AppHotkeyAction.FocusBibleSearch => "Ставит курсор в поиск на текущей странице: Песни или Библия.",
+        AppHotkeyAction.GoToCatalog => "Переключает навигацию на раздел «Песни».",
+        AppHotkeyAction.GoToBible => "Переключает навигацию на раздел «Библия».",
+        AppHotkeyAction.GoToAnnouncements => "Переключает навигацию на раздел «Объявления».",
         _ => string.Empty
     };
 

@@ -1307,6 +1307,7 @@ public sealed class DisplaySettingsService : IDisplaySettingsService
         await WriteSettingAsync(AskBeforeCloseKey, ask.ToString()).ConfigureAwait(false);
     }
 
+
     private Task<string?> ReadSettingAsync(string key)
     {
         try

@@ -811,6 +811,7 @@ public class CatalogService(AppDbContext dbContext) : ICatalogService
             existing.IsBold = sanitized.IsBold;
             existing.TextAlignment = sanitized.TextAlignment;
             existing.SectionTransitionMode = sanitized.SectionTransitionMode;
+            existing.TransitionStyle = sanitized.TransitionStyle;
             existing.SectionTransitionDurationMs = sanitized.SectionTransitionDurationMs;
             existing.Colors = sanitized.Colors;
             existing.BackgroundMediaPath = sanitized.BackgroundMediaPath;
@@ -824,6 +825,9 @@ public class CatalogService(AppDbContext dbContext) : ICatalogService
             existing.TextOutlineThickness = sanitized.TextOutlineThickness;
             existing.TextOutlineColor = sanitized.TextOutlineColor;
             existing.TextOutlineOpacity = sanitized.TextOutlineOpacity;
+            existing.ShowBibleReference = sanitized.ShowBibleReference;
+            existing.BibleReferencePlacement = sanitized.BibleReferencePlacement;
+            existing.BibleReferenceAlignment = sanitized.BibleReferenceAlignment;
         }
 
         await _dbContext.SaveChangesAsync(cancellationToken);
@@ -1300,6 +1304,7 @@ public class CatalogService(AppDbContext dbContext) : ICatalogService
             IsBold = preset.IsBold,
             TextAlignment = string.IsNullOrWhiteSpace(preset.TextAlignment) ? "Center" : preset.TextAlignment,
             SectionTransitionMode = preset.SectionTransitionMode,
+            TransitionStyle = preset.TransitionStyle,
             SectionTransitionDurationMs = NormalizeTransitionDuration(preset.SectionTransitionDurationMs),
             Colors = new ThemeColors(
                 NormalizeColor(colors.Primary, ThemeColors.Default.Primary),
@@ -1316,9 +1321,15 @@ public class CatalogService(AppDbContext dbContext) : ICatalogService
             TextOutlineColor = NormalizeColor(
                 string.IsNullOrWhiteSpace(preset.TextOutlineColor) ? "#000000" : preset.TextOutlineColor,
                 "#000000"),
-            TextOutlineOpacity = Math.Clamp(preset.TextOutlineOpacity, 0, 1)
+            TextOutlineOpacity = Math.Clamp(preset.TextOutlineOpacity, 0, 1),
+            ShowBibleReference = preset.ShowBibleReference,
+            BibleReferencePlacement = preset.BibleReferencePlacement,
+            BibleReferenceAlignment = NormalizeBibleReferenceAlignment(preset.BibleReferenceAlignment)
         };
     }
+
+    private static string NormalizeBibleReferenceAlignment(string? alignment) =>
+        alignment is "Left" or "Center" or "Right" ? alignment : "Center";
 
     private static int NormalizeTransitionDuration(int ms) =>
         Math.Clamp(ms <= 0 ? 750 : ms, 150, 3000);

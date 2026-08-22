@@ -19,7 +19,12 @@ public class ThemePreset
 
     public string TextAlignment { get; set; } = "Center";
 
+    /// <summary>Устаревшее поле: сохранено для обратной совместимости. Используйте TransitionStyle.</summary>
+    [Obsolete("Используйте TransitionStyle вместо этого поля")]
     public SectionTransitionMode SectionTransitionMode { get; set; } = SectionTransitionMode.CrossFade;
+
+    /// <summary>Стиль анимации переключения слайдов (Composition API).</summary>
+    public TransitionStyle TransitionStyle { get; set; } = TransitionStyle.FadeSlide;
 
     /// <summary>Длительность анимации смены слайда в миллисекундах.</summary>
     public int SectionTransitionDurationMs { get; set; } = 750;
@@ -52,6 +57,16 @@ public class ThemePreset
 
     /// <summary>Непрозрачность контура 0…1.</summary>
     public double TextOutlineOpacity { get; set; } = 1;
+
+    /// <summary>Показывать подпись книги/главы/стиха на проекции.</summary>
+    public bool ShowBibleReference { get; set; }
+
+    /// <summary>Положение подписи относительно текста / экрана.</summary>
+    public BibleReferencePlacement BibleReferencePlacement { get; set; } = BibleReferencePlacement.Above;
+
+    /// <summary>Выравнивание подписи: Left / Center / Right.</summary>
+    [MaxLength(16)]
+    public string BibleReferenceAlignment { get; set; } = "Center";
 
     public ICollection<ThemeWallpaper> Wallpapers { get; set; } = new List<ThemeWallpaper>();
 

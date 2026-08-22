@@ -24,8 +24,21 @@ public sealed partial class MainPage : Page
         ViewModel = App.AppHost.Services.GetRequiredService<MainViewModel>();
         _hotkeyDispatcher = App.AppHost.Services.GetRequiredService<HotkeyDispatcher>();
         DataContext = ViewModel;
+        ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         Loaded += OnPageLoaded;
         Unloaded += OnPageUnloaded;
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(MainViewModel.SelectedItem))
+        {
+            return;
+        }
+
+        // Горячие клавиши меняют SelectedItem без клика по NavigationView —
+        // SelectionChanged может не прийти, поэтому навигируем явно.
+        NavigateToSelection(ViewModel.SelectedItem, new SuppressNavigationTransitionInfo());
     }
 
     /// <summary>Применить предпочтение свёрнутости меню (из настроек).</summary>

@@ -37,6 +37,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
     private bool _suppressKeepProjectionBackgroundPersist;
     private bool _suppressAskBeforeClosePersist;
     private bool _isModalEditing;
+    private bool _suppressProjectionThemeApply;
 
     public event EventHandler<ThemePreset>? ThemePresetSaved;
     public event EventHandler? ThemePresetDeleted;
@@ -44,6 +45,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
     public ObservableCollection<ThemePreset> Presets { get; } = new();
     public ObservableCollection<ThemePresetListItem> PresetItems { get; } = new();
     public ObservableCollection<HotkeyBindingItem> Hotkeys { get; } = new();
+    public ObservableCollection<TransitionStyleOptionItem> TransitionStyleOptions { get; } = new();
     public ObservableCollection<SettingsNavItem> SettingsSections { get; } = new(
         new[]
         {
@@ -95,6 +97,9 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
 
     [ObservableProperty]
     private SectionTransitionOptionItem? selectedSectionTransition;
+
+    [ObservableProperty]
+    private TransitionStyleOptionItem? selectedTransitionStyle;
 
     [ObservableProperty]
     private double sectionTransitionDurationMs = 750;
@@ -408,6 +413,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         BuildTextLayoutOptions();
         BuildBibleReferencePlacementOptions();
         BuildSectionTransitionOptions();
+        BuildTransitionStyleOptions();
         BuildBackgroundPickModeOptions();
         BuildWallpaperPoolOptions();
         BuildAppUiThemeOptions();
@@ -452,6 +458,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
                 or nameof(IsBold)
                 or nameof(TextAlignment)
                 or nameof(SelectedSectionTransition)
+                or nameof(SelectedTransitionStyle)
                 or nameof(SectionTransitionDurationMs)
                 or nameof(PrimaryColor)
                 or nameof(BackgroundColor)
@@ -461,7 +468,10 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
                 or nameof(TextOutlineEnabled)
                 or nameof(TextOutlineThickness)
                 or nameof(TextOutlineColor)
-                or nameof(TextOutlineOpacity))
+                or nameof(TextOutlineOpacity)
+                or nameof(ShowBibleReference)
+                or nameof(SelectedBibleReferencePlacement)
+                or nameof(BibleReferenceAlignment))
             {
                 if (CanSave())
                 {
@@ -592,7 +602,6 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         await LoadPresetsAsync(cancellationToken);
         await LoadDisplaysAsync(cancellationToken);
         await LoadTextLayoutModeAsync(cancellationToken);
-        await LoadBibleReferenceSettingsAsync();
         await LoadCameraSettingsAsync(cancellationToken);
     }
 
@@ -773,10 +782,25 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         UpdateTransitionSpeedVisibility();
     }
 
+    private void BuildTransitionStyleOptions()
+    {
+        TransitionStyleOptions.Clear();
+        foreach (TransitionStyle style in Enum.GetValues<TransitionStyle>())
+        {
+            TransitionStyleOptions.Add(new TransitionStyleOptionItem(style));
+        }
+
+        SelectedTransitionStyle = TransitionStyleOptions.FirstOrDefault(o => o.Style == TransitionStyle.FadeSlide)
+            ?? TransitionStyleOptions.FirstOrDefault();
+    }
+
     private void UpdateTransitionSpeedVisibility() =>
-        IsTransitionSpeedVisible = SelectedSectionTransition?.Mode.UsesDuration() == true;
+        IsTransitionSpeedVisible = SelectedTransitionStyle?.Style.UsesDuration() == true;
 
     partial void OnSelectedSectionTransitionChanged(SectionTransitionOptionItem? value) =>
+        UpdateTransitionSpeedVisibility();
+
+    partial void OnSelectedTransitionStyleChanged(TransitionStyleOptionItem? value) =>
         UpdateTransitionSpeedVisibility();
 
     public string SectionTransitionDurationLabel
@@ -1204,45 +1228,31 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         mode is SectionTransitionMode.None
             or SectionTransitionMode.CrossFade
             or SectionTransitionMode.FadeThrough
+            or SectionTransitionMode.FadeSlide
+            or SectionTransitionMode.BlurSharp
+            or SectionTransitionMode.Stagger
             ? mode
             : SectionTransitionMode.CrossFade;
 
-    private async Task LoadBibleReferenceSettingsAsync()
+    private void ApplyBibleReferenceFromPreset(ThemePreset preset)
     {
+        _suppressBibleReferencePersist = true;
         try
         {
-            _suppressBibleReferencePersist = true;
-            ShowBibleReference = await _displaySettingsService.GetShowBibleReferenceAsync();
-            var placement = await _displaySettingsService.GetBibleReferencePlacementAsync();
+            ShowBibleReference = preset.ShowBibleReference;
             SelectedBibleReferencePlacement = BibleReferencePlacementOptions
-                .FirstOrDefault(o => o.Placement == placement)
+                .FirstOrDefault(o => o.Placement == preset.BibleReferencePlacement)
                 ?? BibleReferencePlacementOptions.FirstOrDefault();
-            BibleReferenceAlignment = await _displaySettingsService.GetBibleReferenceAlignmentAsync();
+            BibleReferenceAlignment = string.IsNullOrWhiteSpace(preset.BibleReferenceAlignment)
+                ? "Center"
+                : preset.BibleReferenceAlignment;
             OnPropertyChanged(nameof(IsBibleRefAlignLeft));
             OnPropertyChanged(nameof(IsBibleRefAlignCenter));
             OnPropertyChanged(nameof(IsBibleRefAlignRight));
         }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"LoadBibleReferenceSettingsAsync: {ex.Message}");
-        }
         finally
         {
             _suppressBibleReferencePersist = false;
-        }
-
-        // Подтянуть флаг на окно проекции (иначе ShowBibleReference там остаётся false до ручного переключения).
-        try
-        {
-            var projectionVm = App.AppHost.Services.GetService(typeof(ProjectionDisplayViewModel)) as ProjectionDisplayViewModel;
-            if (projectionVm is not null)
-            {
-                await projectionVm.RefreshBibleReferenceSettingsAsync();
-            }
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"LoadBibleReferenceSettingsAsync → projection: {ex.Message}");
         }
     }
 
@@ -1351,7 +1361,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
     {
         if (!_suppressBibleReferencePersist)
         {
-            _ = PersistBibleReferenceSettingsAsync();
+            PushBibleReferenceToProjection();
         }
     }
 
@@ -1359,7 +1369,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
     {
         if (!_suppressBibleReferencePersist)
         {
-            _ = PersistBibleReferenceSettingsAsync();
+            PushBibleReferenceToProjection();
         }
     }
 
@@ -1370,27 +1380,25 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         OnPropertyChanged(nameof(IsBibleRefAlignRight));
         if (!_suppressBibleReferencePersist)
         {
-            _ = PersistBibleReferenceSettingsAsync();
+            PushBibleReferenceToProjection();
         }
     }
 
-    private async Task PersistBibleReferenceSettingsAsync()
+    private void PushBibleReferenceToProjection()
     {
         try
         {
-            var placement = SelectedBibleReferencePlacement?.Placement ?? BibleReferencePlacement.Above;
-            await _displaySettingsService.SetShowBibleReferenceAsync(ShowBibleReference);
-            await _displaySettingsService.SetBibleReferencePlacementAsync(placement);
-            await _displaySettingsService.SetBibleReferenceAlignmentAsync(BibleReferenceAlignment);
-
-            if (App.AppHost.Services.GetService(typeof(ProjectionDisplayViewModel)) is ProjectionDisplayViewModel projectionVm)
+            if (App.AppHost.Services.GetService(typeof(ProjectionDisplayViewModel)) is not ProjectionDisplayViewModel projectionVm)
             {
-                await projectionVm.ApplyBibleReferenceSettingsAsync(ShowBibleReference, placement, BibleReferenceAlignment);
+                return;
             }
+
+            var placement = SelectedBibleReferencePlacement?.Placement ?? BibleReferencePlacement.Above;
+            _ = projectionVm.ApplyBibleReferenceSettingsAsync(ShowBibleReference, placement, BibleReferenceAlignment);
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"PersistBibleReferenceSettingsAsync: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"PushBibleReferenceToProjection: {ex.Message}");
         }
     }
 
@@ -1546,29 +1554,39 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
                 Presets.Add(preset);
             }
 
-            // Пытаемся загрузить сохранённый стиль из настроек
-            var savedThemePresetId = await _displaySettingsService.GetSelectedThemePresetIdAsync();
-            if (savedThemePresetId.HasValue)
+            // Не дёргаем проекцию: выбор пресета при загрузке настроек иначе
+            // перезапускает текущий слайд с анимацией перехода.
+            _suppressProjectionThemeApply = true;
+            try
             {
-                var savedPreset = Presets.FirstOrDefault(p => p.Id == savedThemePresetId.Value);
-                if (savedPreset is not null)
+                // Пытаемся загрузить сохранённый стиль из настроек
+                var savedThemePresetId = await _displaySettingsService.GetSelectedThemePresetIdAsync();
+                if (savedThemePresetId.HasValue)
                 {
-                    SelectedPreset = savedPreset;
+                    var savedPreset = Presets.FirstOrDefault(p => p.Id == savedThemePresetId.Value);
+                    if (savedPreset is not null)
+                    {
+                        SelectedPreset = savedPreset;
+                    }
+                    else
+                    {
+                        // Если сохранённый стиль не найден, используем предыдущий выбор или первый
+                        SelectedPreset = previousId is not null
+                            ? Presets.FirstOrDefault(p => p.Id == previousId)
+                            : Presets.FirstOrDefault();
+                    }
                 }
                 else
                 {
-                    // Если сохранённый стиль не найден, используем предыдущий выбор или первый
+                    // Если стиль не сохранён в настройках, используем предыдущий выбор или первый
                     SelectedPreset = previousId is not null
                         ? Presets.FirstOrDefault(p => p.Id == previousId)
                         : Presets.FirstOrDefault();
                 }
             }
-            else
+            finally
             {
-                // Если стиль не сохранён в настройках, используем предыдущий выбор или первый
-                SelectedPreset = previousId is not null
-                    ? Presets.FirstOrDefault(p => p.Id == previousId)
-                    : Presets.FirstOrDefault();
+                _suppressProjectionThemeApply = false;
             }
 
             RebuildPresetItems();
@@ -1647,6 +1665,18 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         SelectedSectionTransition = SectionTransitionOptions.FirstOrDefault(o => o.Mode == NormalizeTransition(preset.SectionTransitionMode))
             ?? SectionTransitionOptions.FirstOrDefault(o => o.Mode == SectionTransitionMode.CrossFade)
             ?? SectionTransitionOptions.FirstOrDefault();
+
+        var loadedStyle = preset.TransitionStyle;
+        System.Diagnostics.Debug.WriteLine($"LoadPresetIntoEditor: preset.TransitionStyle = {loadedStyle}");
+        ChyguiSlide.Data.InteractionLogger.Log($"LoadPresetIntoEditor: preset.TransitionStyle = {loadedStyle}");
+
+        SelectedTransitionStyle = TransitionStyleOptions.FirstOrDefault(o => o.Style == loadedStyle)
+            ?? TransitionStyleOptions.FirstOrDefault(o => o.Style == TransitionStyle.FadeSlide)
+            ?? TransitionStyleOptions.FirstOrDefault();
+
+        System.Diagnostics.Debug.WriteLine($"LoadPresetIntoEditor: SelectedTransitionStyle = {SelectedTransitionStyle?.Style}");
+        ChyguiSlide.Data.InteractionLogger.Log($"LoadPresetIntoEditor: SelectedTransitionStyle = {SelectedTransitionStyle?.Style}");
+
         SectionTransitionDurationMs = preset.SectionTransitionDurationMs <= 0
             ? 750
             : Math.Clamp(preset.SectionTransitionDurationMs, 150, 3000);
@@ -1667,6 +1697,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         TextOutlineThickness = preset.TextOutlineThickness;
         TextOutlineColor = preset.TextOutlineColor ?? "#000000";
         TextOutlineOpacity = preset.TextOutlineOpacity;
+        ApplyBibleReferenceFromPreset(preset);
 
         StatusMessage = $"Редактирование стиля «{preset.Name}».";
         SaveCommand.NotifyCanExecuteChanged();
@@ -1954,6 +1985,22 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         TextOutlineThickness = 2;
         TextOutlineColor = "#000000";
         TextOutlineOpacity = 1;
+        _suppressBibleReferencePersist = true;
+        try
+        {
+            ShowBibleReference = false;
+            SelectedBibleReferencePlacement = BibleReferencePlacementOptions
+                .FirstOrDefault(o => o.Placement == BibleReferencePlacement.Above)
+                ?? BibleReferencePlacementOptions.FirstOrDefault();
+            BibleReferenceAlignment = "Center";
+            OnPropertyChanged(nameof(IsBibleRefAlignLeft));
+            OnPropertyChanged(nameof(IsBibleRefAlignCenter));
+            OnPropertyChanged(nameof(IsBibleRefAlignRight));
+        }
+        finally
+        {
+            _suppressBibleReferencePersist = false;
+        }
         SaveCommand.NotifyCanExecuteChanged();
     }
 
@@ -1994,7 +2041,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
 
         _ = SaveSelectedThemeToSettingsAsync(value?.Id);
 
-        if (value is not null && !_isModalEditing)
+        if (value is not null && !_isModalEditing && !_suppressProjectionThemeApply)
         {
             _projectionDisplayService.ApplyTheme(value);
         }
@@ -2187,6 +2234,10 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         // Если редактируем существующий стиль, используем его ID, иначе создаем новый
         var presetId = _currentPresetId ?? Guid.NewGuid();
 
+        var transitionStyle = SelectedTransitionStyle?.Style ?? TransitionStyle.FadeSlide;
+        System.Diagnostics.Debug.WriteLine($"BuildPresetModel: TransitionStyle = {transitionStyle}");
+        ChyguiSlide.Data.InteractionLogger.Log($"BuildPresetModel: TransitionStyle = {transitionStyle}");
+
         return new ThemePreset
         {
             Id = presetId,
@@ -2195,6 +2246,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
             IsBold = IsBold,
             TextAlignment = string.IsNullOrWhiteSpace(TextAlignment) ? "Center" : TextAlignment,
             SectionTransitionMode = SelectedSectionTransition?.Mode ?? SectionTransitionMode.CrossFade,
+            TransitionStyle = transitionStyle,
             SectionTransitionDurationMs = (int)Math.Clamp(SectionTransitionDurationMs, 150, 3000),
             Colors = new ThemeColors(
                 PrimaryColor,
@@ -2210,7 +2262,10 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
             TextOutlineEnabled = TextOutlineEnabled,
             TextOutlineThickness = TextOutlineThickness,
             TextOutlineColor = TextOutlineColor,
-            TextOutlineOpacity = TextOutlineOpacity
+            TextOutlineOpacity = TextOutlineOpacity,
+            ShowBibleReference = ShowBibleReference,
+            BibleReferencePlacement = SelectedBibleReferencePlacement?.Placement ?? BibleReferencePlacement.Above,
+            BibleReferenceAlignment = string.IsNullOrWhiteSpace(BibleReferenceAlignment) ? "Center" : BibleReferenceAlignment
         };
     }
 

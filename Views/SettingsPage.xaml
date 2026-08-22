@@ -219,39 +219,6 @@
                                 </ScrollViewer>
                             </StackPanel>
                         </Border>
-
-                        <Border
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
-                            BorderThickness="1"
-                            CornerRadius="12"
-                            Padding="20">
-                            <StackPanel Spacing="16">
-                                <StackPanel Spacing="4">
-                                    <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Подпись стиха Библии" />
-                                    <TextBlock
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                        TextWrapping="Wrap"
-                                        Text="Показывать ссылку на книгу, главу и стих (например «Быт 1:12») на экране трансляции." />
-                                </StackPanel>
-                                <CheckBox
-                                    Content="Отображать подпись книги, главы и стиха"
-                                    IsChecked="{Binding ShowBibleReference, Mode=TwoWay}" />
-                                <ComboBox
-                                    Header="Положение относительно текста"
-                                    HorizontalAlignment="Stretch"
-                                    ItemsSource="{Binding BibleReferencePlacementOptions}"
-                                    SelectedItem="{Binding SelectedBibleReferencePlacement, Mode=TwoWay}"
-                                    DisplayMemberPath="Title"
-                                    IsEnabled="{Binding ShowBibleReference}" />
-                                <StackPanel Orientation="Horizontal" Spacing="16">
-                                    <TextBlock VerticalAlignment="Center" Text="Выравнивание:" />
-                                    <RadioButton Content="Слева" IsChecked="{Binding IsBibleRefAlignLeft, Mode=TwoWay}" IsEnabled="{Binding ShowBibleReference}" />
-                                    <RadioButton Content="По центру" IsChecked="{Binding IsBibleRefAlignCenter, Mode=TwoWay}" IsEnabled="{Binding ShowBibleReference}" />
-                                    <RadioButton Content="Справа" IsChecked="{Binding IsBibleRefAlignRight, Mode=TwoWay}" IsEnabled="{Binding ShowBibleReference}" />
-                                </StackPanel>
-                            </StackPanel>
-                        </Border>
                     </StackPanel>
 
                     <!-- Камера -->
@@ -402,6 +369,7 @@
                     <StackPanel
                         Spacing="16"
                         Visibility="{Binding IsThemesSectionVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+
                         <Grid>
                             <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Стили оформления" VerticalAlignment="Center" />
                             <Button

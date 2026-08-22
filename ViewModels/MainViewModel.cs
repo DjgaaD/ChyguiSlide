@@ -62,6 +62,15 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    public void NavigateToAnnouncements()
+    {
+        var item = NavigationItems.FirstOrDefault(i => i.PageType == typeof(Views.AnnouncementsPage));
+        if (item is not null)
+        {
+            SelectedItem = item;
+        }
+    }
+
     public void NavigateToLogs()
     {
         // LogsPage is not in the main navigation, so we need to navigate to Settings first

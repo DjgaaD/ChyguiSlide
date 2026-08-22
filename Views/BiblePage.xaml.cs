@@ -79,9 +79,19 @@ public sealed partial class BiblePage : Page
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
         base.OnNavigatedFrom(e);
+        // Без отписки старые экземпляры страницы «съедают» RequestSearchFocus
+        // (ConsumePendingSearchFocusRequest) — горячая клавиша перестаёт фокусировать поиск.
+        ViewModel.SearchFocusRequested -= OnSearchFocusRequested;
         SearchBox.Text = string.Empty;
         GridSearchBox.Text = string.Empty;
         ViewModel.ApplySearch(null);
+    }
+
+    protected override void OnNavigatedTo(NavigationEventArgs e)
+    {
+        base.OnNavigatedTo(e);
+        ViewModel.SearchFocusRequested -= OnSearchFocusRequested;
+        ViewModel.SearchFocusRequested += OnSearchFocusRequested;
     }
 
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -459,6 +469,8 @@ public sealed partial class BiblePage : Page
         }
     }
 
+    private bool _isHandlingSearchFocus;
+
     private async Task FocusSearchBoxIfRequestedAsync()
     {
         if (!ViewModel.ConsumePendingSearchFocusRequest())
@@ -466,13 +478,36 @@ public sealed partial class BiblePage : Page
             return;
         }
 
-        await Task.Yield();
-        GetActiveSearchBox().Focus(FocusState.Programmatic);
+        // Ждём layout (список/сетка) — иначе Focus на Collapsed AutoSuggestBox молча падает.
+        await Task.Delay(50);
+        var box = GetActiveSearchBox();
+        box.Focus(FocusState.Keyboard);
+        try
+        {
+            box.IsSuggestionListOpen = false;
+        }
+        catch
+        {
+            // ignore
+        }
     }
 
     private async void OnSearchFocusRequested()
     {
-        await FocusSearchBoxIfRequestedAsync();
+        if (_isHandlingSearchFocus)
+        {
+            return;
+        }
+
+        _isHandlingSearchFocus = true;
+        try
+        {
+            await FocusSearchBoxIfRequestedAsync();
+        }
+        finally
+        {
+            _isHandlingSearchFocus = false;
+        }
     }
 
     private static Brush GetBookBrush(string hex)

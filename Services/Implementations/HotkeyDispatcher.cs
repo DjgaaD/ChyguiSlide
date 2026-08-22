@@ -107,11 +107,14 @@ public sealed class HotkeyDispatcher : IDisposable
         }
 
         // Не перехватывать стрелки/прочее, пока пользователь печатает в поле ввода.
-        // F5 / Esc — всегда: иначе поиск в каталоге «съедает» старт показа.
+        // F1–F5 / Esc / поиск — всегда: иначе поле ввода «съедает» навигацию и старт показа.
         if (IsTextInputFocused()
             && action is not AppHotkeyAction.StartShow
             && action is not AppHotkeyAction.EndShow
-            && action is not AppHotkeyAction.FocusBibleSearch)
+            && action is not AppHotkeyAction.FocusBibleSearch
+            && action is not AppHotkeyAction.GoToCatalog
+            && action is not AppHotkeyAction.GoToBible
+            && action is not AppHotkeyAction.GoToAnnouncements)
         {
             return false;
         }
@@ -135,6 +138,27 @@ public sealed class HotkeyDispatcher : IDisposable
     {
         try
         {
+            if (action is AppHotkeyAction.GoToCatalog
+                or AppHotkeyAction.GoToBible
+                or AppHotkeyAction.GoToAnnouncements)
+            {
+                var main = _services.GetRequiredService<MainViewModel>();
+                switch (action)
+                {
+                    case AppHotkeyAction.GoToCatalog:
+                        main.NavigateToCatalog();
+                        break;
+                    case AppHotkeyAction.GoToBible:
+                        main.NavigateToBible();
+                        break;
+                    case AppHotkeyAction.GoToAnnouncements:
+                        main.NavigateToAnnouncements();
+                        break;
+                }
+
+                return;
+            }
+
             if (action == AppHotkeyAction.FocusBibleSearch)
             {
                 var main = _services.GetRequiredService<MainViewModel>();

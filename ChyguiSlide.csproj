@@ -54,6 +54,9 @@
         <Content Include="Assets\Bible\bible.json" CopyToOutputDirectory="PreserveNewest" />
         <Content Include="Assets\Seed\PesnVozr\pv3300.sps" CopyToOutputDirectory="PreserveNewest" />
         <Content Include="Assets\Lucide\*.svg" CopyToOutputDirectory="PreserveNewest" />
+        <Content Include="Web\*.html" CopyToOutputDirectory="PreserveNewest" />
+        <Content Include="Web\*.css" CopyToOutputDirectory="PreserveNewest" />
+        <Content Include="Web\*.js" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
 
     <ItemGroup>
@@ -63,6 +66,7 @@
 
     <ItemGroup>
         <PackageReference Include="HtmlAgilityPack" Version="1.11.72" />
+        <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4129.50" />
         <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.6.250205002" />
         <PackageReference Include="Microsoft.Graphics.Win2D" Version="1.3.2" />
         <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.1.1" />

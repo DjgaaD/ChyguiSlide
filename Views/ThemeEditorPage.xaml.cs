@@ -21,6 +21,24 @@ public sealed partial class ThemeEditorPage : Page
         ViewModel = App.AppHost.Services.GetRequiredService<ThemePresetEditorViewModel>();
         DataContext = ViewModel;
         Loaded += (_, _) => AppUiThemeApplier.ApplyToElement(this);
+        // ContentDialog иногда глотает wheel; прокручиваем ScrollViewer вручную
+        EditorScrollViewer.AddHandler(
+            UIElement.PointerWheelChangedEvent,
+            new PointerEventHandler(OnEditorPointerWheelChanged),
+            handledEventsToo: true);
+    }
+
+    private void OnEditorPointerWheelChanged(object sender, PointerRoutedEventArgs e)
+    {
+        var delta = e.GetCurrentPoint(EditorScrollViewer).Properties.MouseWheelDelta;
+        if (delta == 0)
+        {
+            return;
+        }
+
+        var target = EditorScrollViewer.VerticalOffset - delta;
+        EditorScrollViewer.ChangeView(null, target, null, disableAnimation: true);
+        e.Handled = true;
     }
 
     private void OnPickPrimaryColorClicked(object sender, RoutedEventArgs e)
