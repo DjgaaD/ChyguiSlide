@@ -130,7 +130,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
     public IRelayCommand RestoreProjectionCommand { get; }
     public IRelayCommand<int> SkipToSectionCommand { get; }
     public IAsyncRelayCommand OpenProjectionCommand { get; }
-    public IRelayCommand CloseProjectionCommand { get; }
+    public IAsyncRelayCommand CloseProjectionCommand { get; }
     public IRelayCommand ToggleBlackoutCommand { get; }
     public IRelayCommand<Playlist> LoadSavedPlaylistCommand { get; }
     public IAsyncRelayCommand<Playlist> DeleteSavedPlaylistCommand { get; }
@@ -165,7 +165,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
         RestoreProjectionCommand = new RelayCommand(RestoreProjection, () => IsShowStarted && IsProjectionCleared);
         SkipToSectionCommand = new RelayCommand<int>(SkipToSection);
         OpenProjectionCommand = new AsyncRelayCommand(StartShowFromButtonAsync, () => !IsShowStarted);
-        CloseProjectionCommand = new RelayCommand(CloseProjection, () => _projectionDisplayService.IsOpen);
+        CloseProjectionCommand = new AsyncRelayCommand(EndShowAsync, () => _projectionDisplayService.IsOpen);
         ToggleBlackoutCommand = new RelayCommand(ToggleBlackout, () => _projectionDisplayService.IsOpen);
         LoadSavedPlaylistCommand = new RelayCommand<Playlist>(LoadPlaylistIntoQuick, playlist => playlist is not null);
         DeleteSavedPlaylistCommand = new AsyncRelayCommand<Playlist>(DeleteSavedPlaylistAsync, playlist => playlist is not null);
