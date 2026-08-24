@@ -29,6 +29,10 @@ public interface IDisplaySettingsService
     Task SetShowBibleReferenceAsync(bool show);
     Task<bool> GetKeepProjectionBackgroundAsync();
     Task SetKeepProjectionBackgroundAsync(bool keep);
+    /// <summary>
+    /// Постоянный фон разрешён только при ≥2 мониторах и выбранном не основном экране.
+    /// </summary>
+    Task<bool> CanKeepProjectionBackgroundAsync();
     Task<BibleReferencePlacement> GetBibleReferencePlacementAsync();
     Task SetBibleReferencePlacementAsync(BibleReferencePlacement placement);
     Task<string> GetBibleReferenceAlignmentAsync();

@@ -1233,6 +1233,18 @@ public sealed class DisplaySettingsService : IDisplaySettingsService
         ChyguiSlide.Data.InteractionLogger.Log($"DisplaySettingsService.SetKeepProjectionBackgroundAsync: WriteSettingAsync completed");
     }
 
+    public async Task<bool> CanKeepProjectionBackgroundAsync()
+    {
+        var displays = await GetAvailableDisplaysAsync().ConfigureAwait(false);
+        if (displays.Count < 2)
+        {
+            return false;
+        }
+
+        var selected = await GetSelectedDisplayAsync().ConfigureAwait(false);
+        return selected is { IsPrimary: false };
+    }
+
     public async Task<bool> GetObsStreamEnabledAsync()
     {
         var raw = await ReadSettingAsync(ObsStreamEnabledKey).ConfigureAwait(false);

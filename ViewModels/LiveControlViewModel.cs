@@ -578,6 +578,18 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
                 return;
             }
 
+            if (!await _displaySettingsService.CanKeepProjectionBackgroundAsync())
+            {
+                // На одном/основном экране опция опасна — выключаем и не открываем окно.
+                await _displaySettingsService.SetKeepProjectionBackgroundAsync(false);
+                if (_projectionDisplayService.IsOpen)
+                {
+                    _projectionDisplayService.Hide();
+                }
+
+                return;
+            }
+
             // Не очищаем контент перед открытием - это вызывает мерцание чёрным экраном
             // Фон уже должен быть установлен через ApplyTheme
             _projectionDisplayService.SetBlackout(false);

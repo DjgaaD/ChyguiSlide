@@ -170,10 +170,11 @@
                                     <TextBlock
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                         TextWrapping="Wrap"
-                                        Text="Окно проекции остаётся открытым с фоном стиля. Текст появляется при показе и исчезает при завершении; рабочий стол не виден." />
+                                        Text="{Binding KeepProjectionBackgroundHint}" />
                                 </StackPanel>
                                 <CheckBox
                                     Content="Держать фон на экране"
+                                    IsEnabled="{Binding CanKeepProjectionBackground}"
                                     IsChecked="{Binding KeepProjectionBackground, Mode=TwoWay}" />
                             </StackPanel>
                         </Border>

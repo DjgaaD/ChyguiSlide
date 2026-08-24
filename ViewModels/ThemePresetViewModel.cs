@@ -203,6 +203,17 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
     [ObservableProperty]
     private bool keepProjectionBackground;
 
+    /// <summary>
+    /// Опция «Держать фон» доступна только при втором (не основном) выбранном мониторе.
+    /// </summary>
+    public bool CanKeepProjectionBackground =>
+        AvailableDisplays.Count >= 2 && SelectedDisplay is { IsPrimary: false };
+
+    public string KeepProjectionBackgroundHint =>
+        CanKeepProjectionBackground
+            ? "Окно проекции остаётся открытым с фоном стиля. Текст появляется при показе и исчезает при завершении; рабочий стол не виден."
+            : "Доступно только при двух и более мониторах, если выбран не основной экран. На одном/основном экране опция отключена, чтобы не перекрыть интерфейс.";
+
     [ObservableProperty]
     private int projectionMarginLeft = 48;
 
@@ -608,18 +619,20 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         }
 
         await LoadAppUiThemeAsync(cancellationToken);
-        await LoadKeepProjectionBackgroundAsync();
         await LoadProjectionMarginsAsync();
         await LoadObsStreamSettingsAsync();
         await LoadAskBeforeCloseAsync();
 
         if (Presets.Count > 0)
         {
+            await LoadDisplaysAsync(cancellationToken);
+            await LoadKeepProjectionBackgroundAsync();
             return;
         }
 
         await LoadPresetsAsync(cancellationToken);
         await LoadDisplaysAsync(cancellationToken);
+        await LoadKeepProjectionBackgroundAsync();
         await LoadTextLayoutModeAsync(cancellationToken);
         await LoadCameraSettingsAsync(cancellationToken);
     }
@@ -1156,6 +1169,14 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         {
             _suppressKeepProjectionBackgroundPersist = true;
             var value = await _displaySettingsService.GetKeepProjectionBackgroundAsync();
+            if (value && !await _displaySettingsService.CanKeepProjectionBackgroundAsync())
+            {
+                value = false;
+                _suppressKeepProjectionBackgroundPersist = false;
+                KeepProjectionBackground = false;
+                return;
+            }
+
             KeepProjectionBackground = value;
         }
         catch (Exception ex)
@@ -1165,21 +1186,41 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         finally
         {
             _suppressKeepProjectionBackgroundPersist = false;
+            OnPropertyChanged(nameof(CanKeepProjectionBackground));
+            OnPropertyChanged(nameof(KeepProjectionBackgroundHint));
         }
     }
 
     partial void OnKeepProjectionBackgroundChanged(bool value)
     {
-        if (!_suppressKeepProjectionBackgroundPersist)
+        if (_suppressKeepProjectionBackgroundPersist)
         {
-            _ = PersistKeepProjectionBackgroundAsync(value);
+            return;
         }
+
+        if (value && !CanKeepProjectionBackground)
+        {
+            _suppressKeepProjectionBackgroundPersist = true;
+            KeepProjectionBackground = false;
+            _suppressKeepProjectionBackgroundPersist = false;
+            return;
+        }
+
+        _ = PersistKeepProjectionBackgroundAsync(value);
     }
 
     private async Task PersistKeepProjectionBackgroundAsync(bool keep)
     {
         try
         {
+            if (keep && !await _displaySettingsService.CanKeepProjectionBackgroundAsync())
+            {
+                keep = false;
+                _suppressKeepProjectionBackgroundPersist = true;
+                KeepProjectionBackground = false;
+                _suppressKeepProjectionBackgroundPersist = false;
+            }
+
             await _displaySettingsService.SetKeepProjectionBackgroundAsync(keep);
 
             if (keep)
@@ -1198,19 +1239,28 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
             }
             else
             {
-                // При выключении опции закрываем окно проекции
                 if (App.AppHost.Services.GetService(typeof(IProjectionStateService)) is IProjectionStateService state)
                 {
                     state.Clear();
                 }
 
-                // Закрываем окно проекции
                 _projectionDisplayService.Hide();
             }
         }
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"PersistKeepProjectionBackgroundAsync: {ex.Message}");
+        }
+    }
+
+    private void RefreshKeepProjectionBackgroundAvailability()
+    {
+        OnPropertyChanged(nameof(CanKeepProjectionBackground));
+        OnPropertyChanged(nameof(KeepProjectionBackgroundHint));
+
+        if (!CanKeepProjectionBackground && KeepProjectionBackground)
+        {
+            KeepProjectionBackground = false;
         }
     }
 
@@ -2544,6 +2594,8 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
             {
                 StatusMessage = "Экраны не найдены. Проверьте подключение мониторов.";
             }
+
+            RefreshKeepProjectionBackgroundAvailability();
         }
         catch (Exception ex)
         {
@@ -2615,6 +2667,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
     partial void OnSelectedDisplayChanged(DisplayInfo? value)
     {
         OnPropertyChanged(nameof(ProjectionContentAreaHint));
+        RefreshKeepProjectionBackgroundAvailability();
         if (value is not null)
         {
             SaveDisplaySelectionCommand.ExecuteAsync(null);
