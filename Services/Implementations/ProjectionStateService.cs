@@ -15,6 +15,7 @@ public class ProjectionStateService : IProjectionStateService
     private int _sectionIndex;
     private IReadOnlyList<string> _sections = Array.Empty<string>();
     private IReadOnlyList<string?> _sectionCaptions = Array.Empty<string?>();
+    private ProjectionContentKind _contentKind = ProjectionContentKind.Song;
     private ProjectionState _current = ProjectionState.Empty;
     private IReadOnlyList<string>? _linesOverride;
 
@@ -36,7 +37,8 @@ public class ProjectionStateService : IProjectionStateService
         string songTitle,
         IReadOnlyList<string> sections,
         int initialSectionIndex = 0,
-        IReadOnlyList<string?>? sectionCaptions = null)
+        IReadOnlyList<string?>? sectionCaptions = null,
+        ProjectionContentKind contentKind = ProjectionContentKind.Song)
     {
         lock (_stateLock)
         {
@@ -52,6 +54,7 @@ public class ProjectionStateService : IProjectionStateService
             if (_songId == songId
                 && _sectionIndex == nextIndex
                 && _linesOverride is null
+                && _contentKind == contentKind
                 && string.Equals(_songTitle, songTitle, StringComparison.Ordinal)
                 && SectionsEqual(_sections, nextSections)
                 && CaptionsEqual(_sectionCaptions, nextCaptions))
@@ -64,6 +67,7 @@ public class ProjectionStateService : IProjectionStateService
             _sectionIndex = nextIndex;
             _sections = nextSections;
             _sectionCaptions = nextCaptions;
+            _contentKind = contentKind;
             _linesOverride = null;
 
             PublishState();
@@ -197,6 +201,7 @@ public class ProjectionStateService : IProjectionStateService
             _sections = Array.Empty<string>();
             _sectionCaptions = Array.Empty<string?>();
             _sectionIndex = 0;
+            _contentKind = ProjectionContentKind.Song;
             _linesOverride = null;
             PublishState();
         }
@@ -244,7 +249,8 @@ public class ProjectionStateService : IProjectionStateService
             _sectionIndex,
             lines,
             DateTimeOffset.UtcNow,
-            caption);
+            caption,
+            _contentKind);
 
         System.Diagnostics.Debug.WriteLine($"[ProjectionStateService] PublishState: invoking StateChanged");
         ChyguiSlide.Data.InteractionLogger.Log($"ProjectionStateService.PublishState: invoking StateChanged");
@@ -253,9 +259,9 @@ public class ProjectionStateService : IProjectionStateService
 
     private IReadOnlyList<string> BuildVisibleLines()
     {
-        if (_linesOverride is { Count: > 0 } overrideLines)
+        if (_linesOverride is not null)
         {
-            return overrideLines;
+            return _linesOverride;
         }
 
         if (_sections.Count == 0 || _sectionIndex < 0 || _sectionIndex >= _sections.Count)

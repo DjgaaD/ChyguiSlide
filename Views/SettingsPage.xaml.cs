@@ -131,12 +131,13 @@ public sealed partial class SettingsPage : Page
             return;
         }
 
-        var (width, height) = GetThemeEditorDialogSize();
+        var (width, contentHeight, dialogMaxHeight) = GetThemeEditorDialogSize();
         var editorPage = new ThemeEditorPage
         {
             Width = width,
-            Height = height,
-            MaxHeight = height,
+            Height = contentHeight,
+            MaxHeight = contentHeight,
+            MinHeight = 0,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Stretch
         };
@@ -144,15 +145,23 @@ public sealed partial class SettingsPage : Page
         ViewModel.ThemePresetSaved += OnThemePresetSaved;
         ViewModel.ThemePresetDeleted += OnThemePresetDeleted;
 
-        // Фиксированный viewport: иначе ContentDialog даёт Page бесконечную высоту и ScrollViewer не скроллится
+        // Фиксированный viewport = только область контента (без title/кнопок диалога).
+        // Иначе ContentDialog обрезает низ, и ScrollViewer «доскролливается»,
+        // но часть контента остаётся за пределами видимой модалки.
         var host = new Border
         {
             Width = width,
-            Height = height,
-            MaxHeight = height,
+            Height = contentHeight,
+            MaxHeight = contentHeight,
+            MinHeight = contentHeight,
             Child = editorPage,
             HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Stretch
+            VerticalAlignment = VerticalAlignment.Stretch,
+            // Явно обрезаем всё, что вылезает за viewport
+            Clip = new Microsoft.UI.Xaml.Media.RectangleGeometry
+            {
+                Rect = new global::Windows.Foundation.Rect(0, 0, width, contentHeight)
+            }
         };
         AppUiThemeApplier.ApplyToElement(host);
 
@@ -174,7 +183,7 @@ public sealed partial class SettingsPage : Page
 
         _themeEditorDialog.Resources["ContentDialogMaxWidth"] = width + 48;
         _themeEditorDialog.Resources["ContentDialogMinWidth"] = Math.Min(width, 960);
-        _themeEditorDialog.Resources["ContentDialogMaxHeight"] = height + 120;
+        _themeEditorDialog.Resources["ContentDialogMaxHeight"] = dialogMaxHeight;
 
         _themeEditorDialog.PrimaryButtonClick += OnThemeEditorPrimarySaveClick;
         if (!createNew)
@@ -245,7 +254,10 @@ public sealed partial class SettingsPage : Page
         _ = DispatcherQueue.TryEnqueue(() => _themeEditorDialog?.Hide());
     }
 
-    private static (double Width, double Height) GetThemeEditorDialogSize()
+    /// <summary>
+    /// width / высота области контента / MaxHeight всего ContentDialog (контент + title + кнопки).
+    /// </summary>
+    private static (double Width, double ContentHeight, double DialogMaxHeight) GetThemeEditorDialogSize()
     {
         double windowWidth = 1280;
         double windowHeight = 800;
@@ -266,9 +278,12 @@ public sealed partial class SettingsPage : Page
             // fallback
         }
 
+        // Title + кнопки + внутренние отступы ContentDialog
+        const double dialogChrome = 152;
         var width = Math.Clamp(windowWidth - 96, 900, 1400);
-        var height = Math.Clamp(windowHeight - 160, 560, 900);
-        return (width, height);
+        var dialogMaxHeight = Math.Clamp(windowHeight - 48, 560, 960);
+        var contentHeight = Math.Max(400, dialogMaxHeight - dialogChrome);
+        return (width, contentHeight, dialogMaxHeight);
     }
 
     private void OnPageKeyDown(object sender, KeyRoutedEventArgs e)
@@ -311,6 +326,34 @@ public sealed partial class SettingsPage : Page
         if (await ContentDialogTheme.ShowAsync(dialog) == ContentDialogResult.Primary)
         {
             await ViewModel.RestoreYandexBackupCommand.ExecuteAsync(null);
+        }
+    }
+
+    private async void OnRestoreLocalBackupClicked(object sender, RoutedEventArgs e)
+    {
+        var sourcePath = await ViewModel.PickLocalBackupFileFromFolderAsync();
+        if (string.IsNullOrWhiteSpace(sourcePath))
+        {
+            return;
+        }
+
+        var fileName = System.IO.Path.GetFileName(sourcePath);
+        var dialog = new ContentDialog
+        {
+            Title = "Восстановление базы",
+            Content =
+                $"Заменить текущую базу песен копией «{fileName}»?\n\n" +
+                "Текущая база будет сохранена рядом как catalog.before-restore-….db.\n" +
+                "После восстановления нужно перезапустить приложение.",
+            PrimaryButtonText = "Восстановить",
+            CloseButtonText = "Отмена",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = XamlRoot
+        };
+
+        if (await ContentDialogTheme.ShowAsync(dialog) == ContentDialogResult.Primary)
+        {
+            await ViewModel.RestoreCatalogLocalFileAsync(sourcePath);
         }
     }
 

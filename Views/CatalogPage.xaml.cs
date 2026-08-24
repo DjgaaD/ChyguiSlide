@@ -1,13 +1,15 @@
 using System;
+using System.ComponentModel;
 using System.Linq;
+using System.Threading.Tasks;
 using ChyguiSlide.Data.Entities;
 using ChyguiSlide.Services;
 using ChyguiSlide.ViewModels;
 using ChyguiSlide.Views.Dialogs;
+using ChyguiSlide.Views.UiAnimation;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml;
-using System.Threading.Tasks;
+using Microsoft.UI.Xaml.Controls;
 using Windows.Storage.Pickers;
 using WinRT.Interop;
 
@@ -20,6 +22,8 @@ public sealed partial class CatalogPage : Page
     private ContentDialog? _editorDialog;
     private bool _isProcessingSearchFocus;
     private static bool _initializedOnce;
+    private ListSelectionStripeBinder? _sectionStripe;
+    private CatalogLookaheadPreview? _lookaheadPreview;
 
     public CatalogPage()
     {
@@ -27,35 +31,46 @@ public sealed partial class CatalogPage : Page
         ViewModel = App.AppHost.Services.GetRequiredService<CatalogViewModel>();
         DataContext = ViewModel;
         ViewModel.SearchFocusRequested += OnSearchFocusRequested;
+        ViewModel.PropertyChanged += OnViewModelPropertyChanged;
     }
 
     private async void OnPageLoaded(object sender, RoutedEventArgs e)
     {
+        ViewModel.SearchFocusRequested += OnSearchFocusRequested;
+        await ApplyModernLayoutAsync();
+
         // Инициализируем только один раз при первом запуске
         if (!_initializedOnce)
         {
             _initializedOnce = true;
             await ViewModel.InitializeAsync();
         }
-        // Не синхронизируем поиск при загрузке, чтобы избежать мигания при навигации
-        // if (string.IsNullOrWhiteSpace(SearchBox.Text) && !string.IsNullOrWhiteSpace(ViewModel.SearchTerm))
-        // {
-        //     await ViewModel.SearchCommand.ExecuteAsync(null);
-        // }
-        // else if (!string.IsNullOrWhiteSpace(ViewModel.SearchTerm))
-        // {
-        //     SearchBox.Text = ViewModel.SearchTerm;
-        // }
+
+        // Поле поиска пустое, а в ViewModel остался старый фильтр — сбрасываем список
+        if (string.IsNullOrWhiteSpace(SearchBoxModern.Text))
+        {
+            if (!string.IsNullOrWhiteSpace(ViewModel.SearchTerm))
+            {
+                await ViewModel.SearchCommand.ExecuteAsync(null);
+            }
+        }
+        else if (!string.Equals(SearchBoxModern.Text, ViewModel.SearchTerm, StringComparison.Ordinal))
+        {
+            await ViewModel.SearchCommand.ExecuteAsync(SearchBoxModern.Text);
+        }
 
         await FocusSearchBoxIfRequestedAsync();
+    }
+
+    protected override void OnNavigatedTo(Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
+    {
+        base.OnNavigatedTo(e);
+        _ = ApplyModernLayoutAsync();
     }
 
     protected override void OnNavigatedFrom(Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
     {
         base.OnNavigatedFrom(e);
-        // Не очищаем поиск при уходе со страницы, чтобы избежать мигания при навигации
-        // SearchBox.Text = string.Empty;
-        // _ = ViewModel.SearchCommand.ExecuteAsync(null);
         ViewModel.SearchFocusRequested -= OnSearchFocusRequested;
     }
 
@@ -534,6 +549,80 @@ public sealed partial class CatalogPage : Page
         ViewModel.AddToQuickPlaylistCommand.Execute(null);
     }
 
+    private async Task ApplyModernLayoutAsync()
+    {
+        await ApplyPreviewCanvasAsync();
+        EnsureModernSectionStripe();
+        EnsureLookaheadPreview();
+        _ = RefreshLookaheadPreviewAsync();
+    }
+
+    private void EnsureModernSectionStripe()
+    {
+        if (SectionListModern is null || ModernSectionStripe is null || ModernSectionHost is null)
+        {
+            return;
+        }
+
+        _sectionStripe ??= new ListSelectionStripeBinder(
+            SectionListModern,
+            ModernSectionStripe,
+            ModernSectionHost,
+            () => ViewModel.SelectedSectionPreview,
+            DispatcherQueue);
+        _sectionStripe.Attach();
+        _sectionStripe.RequestUpdate(animate: false);
+    }
+
+    private void EnsureLookaheadPreview()
+    {
+        if (CatalogWebPreview is null || CatalogPreviewIdleHint is null)
+        {
+            return;
+        }
+
+        _lookaheadPreview ??= new CatalogLookaheadPreview(CatalogWebPreview, CatalogPreviewIdleHint);
+    }
+
+    private async Task ApplyPreviewCanvasAsync()
+    {
+        var (width, height) = await ProjectionOutputSize.GetAsync();
+        if (CatalogPreviewCanvas is not null)
+        {
+            ProjectionOutputSize.ApplyCanvas(CatalogPreviewCanvas, width, height);
+        }
+
+        CatalogWebPreview?.ApplyOutputSize(width, height);
+    }
+
+    private async Task RefreshLookaheadPreviewAsync()
+    {
+        if (_lookaheadPreview is null)
+        {
+            return;
+        }
+
+        await _lookaheadPreview.ShowAsync(ViewModel.SelectedSong, ViewModel.SelectedSectionPreview);
+    }
+
+    private AutoSuggestBox? GetActiveSearchBox() => SearchBoxModern;
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(CatalogViewModel.SelectedSong))
+        {
+            _sectionStripe?.ResetReady();
+            _ = RefreshLookaheadPreviewAsync();
+            return;
+        }
+
+        if (e.PropertyName == nameof(CatalogViewModel.SelectedSectionPreview))
+        {
+            _sectionStripe?.RequestUpdate(animate: true);
+            _ = RefreshLookaheadPreviewAsync();
+        }
+    }
+
     private async Task FocusSearchBoxIfRequestedAsync()
     {
         if (!ViewModel.ConsumePendingSearchFocusRequest())
@@ -542,7 +631,7 @@ public sealed partial class CatalogPage : Page
         }
 
         await Task.Yield();
-        SearchBox.Focus(FocusState.Keyboard);
+        GetActiveSearchBox()?.Focus(FocusState.Keyboard);
     }
 
     private async void OnSearchFocusRequested()

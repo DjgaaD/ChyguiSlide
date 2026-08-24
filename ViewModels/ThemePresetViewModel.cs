@@ -29,6 +29,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
     private readonly IHotkeyService _hotkeyService;
     private readonly ICatalogBackupService _catalogBackupService;
     private readonly IThemeBackgroundMediaService _themeBackgroundMediaService;
+    private readonly IObsStreamService _obsStreamService;
     private readonly Microsoft.UI.Dispatching.DispatcherQueueTimer _autoSaveTimer;
     private Guid? _currentPresetId;
     private HotkeyBindingItem? _listeningHotkey;
@@ -55,7 +56,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
             new SettingsNavItem("Стили", "palette", SettingsSection.Themes),
             new SettingsNavItem("Горячие клавиши", "keyboard", SettingsSection.Hotkeys),
             new SettingsNavItem("Резервные копии", "cloud-upload", SettingsSection.Backup),
-            new SettingsNavItem("Логи", "file-text", SettingsSection.Logs),
+            new SettingsNavItem("Логи", "logs", SettingsSection.Logs),
             new SettingsNavItem("О нас", "info", SettingsSection.About),
         });
 
@@ -203,6 +204,84 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
     private bool keepProjectionBackground;
 
     [ObservableProperty]
+    private int projectionMarginLeft = 48;
+
+    [ObservableProperty]
+    private int projectionMarginRight = 48;
+
+    [ObservableProperty]
+    private int projectionMarginTop = 40;
+
+    [ObservableProperty]
+    private int projectionMarginBottom = 40;
+
+    private bool _suppressProjectionMarginPersist;
+
+    public string ProjectionContentAreaHint
+    {
+        get
+        {
+            var screenW = SelectedDisplay?.Width ?? 1920;
+            var screenH = SelectedDisplay?.Height ?? 1080;
+            var contentW = Math.Max(0, screenW - ProjectionMarginLeft - ProjectionMarginRight);
+            var contentH = Math.Max(0, screenH - ProjectionMarginTop - ProjectionMarginBottom);
+            return $"Область для текста: {contentW}×{contentH} px (экран {screenW}×{screenH})";
+        }
+    }
+
+    [ObservableProperty]
+    private bool obsStreamEnabled;
+
+    [ObservableProperty]
+    private int obsStreamPort = 8765;
+
+    [ObservableProperty]
+    private bool obsStreamBackdropEnabled;
+
+    [ObservableProperty]
+    private double obsStreamBackdropOpacity = 90;
+
+    [ObservableProperty]
+    private string? obsStreamStatus;
+
+    public string ObsStreamBackdropOpacityLabel => $"{ObsStreamBackdropOpacity:0}%";
+
+    private bool _suppressObsStreamPersist;
+
+    public string ObsStreamUrlHint
+    {
+        get
+        {
+            if (!ObsStreamEnabled || !_obsStreamService.IsRunning)
+            {
+                return "—";
+            }
+
+            var lanIp = _obsStreamService.GetPreferredLanIPv4();
+            if (!string.IsNullOrWhiteSpace(lanIp))
+            {
+                return BuildObsPageUrl(lanIp);
+            }
+
+            return "— (LAN IP не найден — проверьте подключение к сети)";
+        }
+    }
+
+    public string ObsStreamLocalUrlHint =>
+        ObsStreamEnabled && _obsStreamService.IsRunning
+            ? BuildObsPageUrl("127.0.0.1")
+            : "—";
+
+    private string BuildObsPageUrl(string host)
+        => $"http://{host}:{ObsStreamPort}/obs";
+
+    public bool ObsStreamShowsLanWarning =>
+        ObsStreamEnabled
+        && _obsStreamService.IsRunning
+        && !_obsStreamService.IsListeningOnLan()
+        && !string.IsNullOrWhiteSpace(_obsStreamService.GetPreferredLanIPv4());
+
+    [ObservableProperty]
     private bool askBeforeClose;
 
     [ObservableProperty]
@@ -218,17 +297,9 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
     public ObservableCollection<WallpaperPoolOptionItem> WallpaperPoolOptions { get; } = new();
     public ObservableCollection<ThemeWallpaperItem> EditingPoolWallpapers { get; } = new();
     public ObservableCollection<AppUiThemeOptionItem> AppUiThemeOptions { get; } = new();
-    public ObservableCollection<BiblePickerLayoutOptionItem> BiblePickerLayoutOptions { get; } = new();
-    public ObservableCollection<NavigationPaneOptionItem> NavigationPaneOptions { get; } = new();
 
     [ObservableProperty]
     private AppUiThemeOptionItem? selectedAppUiTheme;
-
-    [ObservableProperty]
-    private BiblePickerLayoutOptionItem? selectedBiblePickerLayout;
-
-    [ObservableProperty]
-    private NavigationPaneOptionItem? selectedNavigationPane;
 
     public bool IsAppUiThemeSystem
     {
@@ -266,63 +337,11 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         }
     }
 
-    public bool IsNavigationPaneCollapsed
-    {
-        get => SelectedNavigationPane?.Mode == NavigationPaneMode.Collapsed;
-        set
-        {
-            if (value)
-            {
-                SelectedNavigationPane = NavigationPaneOptions.FirstOrDefault(o => o.Mode == NavigationPaneMode.Collapsed);
-            }
-        }
-    }
-
-    public bool IsNavigationPaneExpanded
-    {
-        get => SelectedNavigationPane?.Mode == NavigationPaneMode.Expanded;
-        set
-        {
-            if (value)
-            {
-                SelectedNavigationPane = NavigationPaneOptions.FirstOrDefault(o => o.Mode == NavigationPaneMode.Expanded);
-            }
-        }
-    }
-
-    public bool IsBiblePickerLists
-    {
-        get => SelectedBiblePickerLayout?.Mode == BiblePickerLayoutMode.Lists;
-        set
-        {
-            if (value)
-            {
-                SelectedBiblePickerLayout = BiblePickerLayoutOptions.FirstOrDefault(o => o.Mode == BiblePickerLayoutMode.Lists);
-            }
-        }
-    }
-
-    public bool IsBiblePickerGrid
-    {
-        get => SelectedBiblePickerLayout?.Mode == BiblePickerLayoutMode.Grid;
-        set
-        {
-            if (value)
-            {
-                SelectedBiblePickerLayout = BiblePickerLayoutOptions.FirstOrDefault(o => o.Mode == BiblePickerLayoutMode.Grid);
-            }
-        }
-    }
-
     private void NotifyInterfaceSegmentProperties()
     {
         OnPropertyChanged(nameof(IsAppUiThemeSystem));
         OnPropertyChanged(nameof(IsAppUiThemeLight));
         OnPropertyChanged(nameof(IsAppUiThemeDark));
-        OnPropertyChanged(nameof(IsNavigationPaneCollapsed));
-        OnPropertyChanged(nameof(IsNavigationPaneExpanded));
-        OnPropertyChanged(nameof(IsBiblePickerLists));
-        OnPropertyChanged(nameof(IsBiblePickerGrid));
     }
 
     private Guid? _selectedSharedWallpaperId;
@@ -378,7 +397,8 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         IProjectionDisplayService projectionDisplayService,
         IHotkeyService hotkeyService,
         ICatalogBackupService catalogBackupService,
-        IThemeBackgroundMediaService themeBackgroundMediaService)
+        IThemeBackgroundMediaService themeBackgroundMediaService,
+        IObsStreamService obsStreamService)
     {
         _catalogService = catalogService;
         _displaySettingsService = displaySettingsService;
@@ -386,6 +406,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         _hotkeyService = hotkeyService;
         _catalogBackupService = catalogBackupService;
         _themeBackgroundMediaService = themeBackgroundMediaService;
+        _obsStreamService = obsStreamService;
 
         var dispatcher = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread() ?? App.MainDispatcherQueue;
         _autoSaveTimer = dispatcher.CreateTimer();
@@ -417,8 +438,6 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         BuildBackgroundPickModeOptions();
         BuildWallpaperPoolOptions();
         BuildAppUiThemeOptions();
-        BuildBiblePickerLayoutOptions();
-        BuildNavigationPaneOptions();
         SelectedSettingsSection = SettingsSections[0];
 
         PropertyChanged += (_, args) =>
@@ -589,9 +608,9 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         }
 
         await LoadAppUiThemeAsync(cancellationToken);
-        await LoadBiblePickerLayoutAsync(cancellationToken);
-        await LoadNavigationPaneModeAsync(cancellationToken);
         await LoadKeepProjectionBackgroundAsync();
+        await LoadProjectionMarginsAsync();
+        await LoadObsStreamSettingsAsync();
         await LoadAskBeforeCloseAsync();
 
         if (Presets.Count > 0)
@@ -912,131 +931,6 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         }
     }
 
-    private void BuildBiblePickerLayoutOptions()
-    {
-        BiblePickerLayoutOptions.Clear();
-        BiblePickerLayoutOptions.Add(new BiblePickerLayoutOptionItem(
-            BiblePickerLayoutMode.Lists,
-            "Списки",
-            "Книги, главы и стихи в колонках — как раньше."));
-        BiblePickerLayoutOptions.Add(new BiblePickerLayoutOptionItem(
-            BiblePickerLayoutMode.Grid,
-            "Таблица",
-            "Книги, главы и стихи — таблица ячеек на всю область."));
-
-        _suppressBiblePickerLayoutPersist = true;
-        SelectedBiblePickerLayout = BiblePickerLayoutOptions.FirstOrDefault();
-        _suppressBiblePickerLayoutPersist = false;
-    }
-
-    private bool _suppressBiblePickerLayoutPersist;
-
-    private async Task LoadBiblePickerLayoutAsync(CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            _suppressBiblePickerLayoutPersist = true;
-            var mode = await _displaySettingsService.GetBiblePickerLayoutAsync();
-            SelectedBiblePickerLayout = BiblePickerLayoutOptions.FirstOrDefault(o => o.Mode == mode)
-                ?? BiblePickerLayoutOptions.FirstOrDefault();
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"LoadBiblePickerLayoutAsync: {ex.Message}");
-        }
-        finally
-        {
-            _suppressBiblePickerLayoutPersist = false;
-        }
-    }
-
-    partial void OnSelectedBiblePickerLayoutChanged(BiblePickerLayoutOptionItem? value)
-    {
-        NotifyInterfaceSegmentProperties();
-        if (_suppressBiblePickerLayoutPersist || value is null)
-        {
-            return;
-        }
-
-        _ = SaveBiblePickerLayoutAsync(value.Mode);
-    }
-
-    private async Task SaveBiblePickerLayoutAsync(BiblePickerLayoutMode mode)
-    {
-        try
-        {
-            await _displaySettingsService.SetBiblePickerLayoutAsync(mode);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"SaveBiblePickerLayoutAsync: {ex.Message}");
-        }
-    }
-
-    private void BuildNavigationPaneOptions()
-    {
-        NavigationPaneOptions.Clear();
-        NavigationPaneOptions.Add(new NavigationPaneOptionItem(
-            NavigationPaneMode.Collapsed,
-            "Свёрнуто",
-            "Только иконки — больше места под контент."));
-        NavigationPaneOptions.Add(new NavigationPaneOptionItem(
-            NavigationPaneMode.Expanded,
-            "Развёрнуто",
-            "Иконки и подписи пунктов меню."));
-
-        _suppressNavigationPanePersist = true;
-        SelectedNavigationPane = NavigationPaneOptions.FirstOrDefault();
-        _suppressNavigationPanePersist = false;
-    }
-
-    private bool _suppressNavigationPanePersist;
-
-    private async Task LoadNavigationPaneModeAsync(CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            _suppressNavigationPanePersist = true;
-            var mode = await _displaySettingsService.GetNavigationPaneModeAsync();
-            SelectedNavigationPane = NavigationPaneOptions.FirstOrDefault(o => o.Mode == mode)
-                ?? NavigationPaneOptions.FirstOrDefault();
-            ChyguiSlide.Views.MainPage.TryApplyNavigationPaneMode(
-                SelectedNavigationPane?.Mode ?? NavigationPaneMode.Collapsed);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"LoadNavigationPaneModeAsync: {ex.Message}");
-        }
-        finally
-        {
-            _suppressNavigationPanePersist = false;
-        }
-    }
-
-    partial void OnSelectedNavigationPaneChanged(NavigationPaneOptionItem? value)
-    {
-        NotifyInterfaceSegmentProperties();
-        if (_suppressNavigationPanePersist || value is null)
-        {
-            return;
-        }
-
-        ChyguiSlide.Views.MainPage.TryApplyNavigationPaneMode(value.Mode);
-        _ = SaveNavigationPaneModeAsync(value.Mode);
-    }
-
-    private async Task SaveNavigationPaneModeAsync(NavigationPaneMode mode)
-    {
-        try
-        {
-            await _displaySettingsService.SetNavigationPaneModeAsync(mode);
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"SaveNavigationPaneModeAsync: {ex.Message}");
-        }
-    }
-
     private void BuildWallpaperPoolOptions()
     {
         WallpaperPoolOptions.Clear();
@@ -1318,6 +1212,219 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         {
             System.Diagnostics.Debug.WriteLine($"PersistKeepProjectionBackgroundAsync: {ex.Message}");
         }
+    }
+
+    private async Task LoadProjectionMarginsAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            _suppressProjectionMarginPersist = true;
+            ProjectionMarginLeft = await _displaySettingsService.GetProjectionMarginLeftAsync();
+            ProjectionMarginRight = await _displaySettingsService.GetProjectionMarginRightAsync();
+            ProjectionMarginTop = await _displaySettingsService.GetProjectionMarginTopAsync();
+            ProjectionMarginBottom = await _displaySettingsService.GetProjectionMarginBottomAsync();
+            OnPropertyChanged(nameof(ProjectionContentAreaHint));
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"LoadProjectionMarginsAsync: {ex.Message}");
+        }
+        finally
+        {
+            _suppressProjectionMarginPersist = false;
+        }
+    }
+
+    private async Task PersistProjectionMarginsAsync()
+    {
+        try
+        {
+            var left = Math.Clamp(ProjectionMarginLeft, 0, 4000);
+            var right = Math.Clamp(ProjectionMarginRight, 0, 4000);
+            var top = Math.Clamp(ProjectionMarginTop, 0, 4000);
+            var bottom = Math.Clamp(ProjectionMarginBottom, 0, 4000);
+
+            await _displaySettingsService.SetProjectionMarginLeftAsync(left);
+            await _displaySettingsService.SetProjectionMarginRightAsync(right);
+            await _displaySettingsService.SetProjectionMarginTopAsync(top);
+            await _displaySettingsService.SetProjectionMarginBottomAsync(bottom);
+
+            if (App.AppHost.Services.GetService(typeof(ProjectionDisplayViewModel)) is ProjectionDisplayViewModel projectionVm)
+            {
+                projectionVm.ApplyProjectionMargins(left, right, top, bottom);
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"PersistProjectionMarginsAsync: {ex.Message}");
+        }
+    }
+
+    partial void OnProjectionMarginLeftChanged(int value)
+    {
+        OnPropertyChanged(nameof(ProjectionContentAreaHint));
+        if (!_suppressProjectionMarginPersist)
+        {
+            _ = PersistProjectionMarginsAsync();
+        }
+    }
+
+    partial void OnProjectionMarginRightChanged(int value)
+    {
+        OnPropertyChanged(nameof(ProjectionContentAreaHint));
+        if (!_suppressProjectionMarginPersist)
+        {
+            _ = PersistProjectionMarginsAsync();
+        }
+    }
+
+    partial void OnProjectionMarginTopChanged(int value)
+    {
+        OnPropertyChanged(nameof(ProjectionContentAreaHint));
+        if (!_suppressProjectionMarginPersist)
+        {
+            _ = PersistProjectionMarginsAsync();
+        }
+    }
+
+    partial void OnProjectionMarginBottomChanged(int value)
+    {
+        OnPropertyChanged(nameof(ProjectionContentAreaHint));
+        if (!_suppressProjectionMarginPersist)
+        {
+            _ = PersistProjectionMarginsAsync();
+        }
+    }
+
+    private async Task LoadObsStreamSettingsAsync()
+    {
+        try
+        {
+            _suppressObsStreamPersist = true;
+            ObsStreamEnabled = await _displaySettingsService.GetObsStreamEnabledAsync();
+            ObsStreamPort = await _displaySettingsService.GetObsStreamPortAsync();
+            ObsStreamBackdropEnabled = await _displaySettingsService.GetObsStreamBackdropEnabledAsync();
+            ObsStreamBackdropOpacity = await _displaySettingsService.GetObsStreamBackdropOpacityAsync() * 100.0;
+            OnPropertyChanged(nameof(ObsStreamBackdropOpacityLabel));
+            RefreshObsStreamStatus();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"LoadObsStreamSettingsAsync: {ex.Message}");
+        }
+        finally
+        {
+            _suppressObsStreamPersist = false;
+        }
+    }
+
+    partial void OnObsStreamEnabledChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ObsStreamUrlHint));
+        OnPropertyChanged(nameof(ObsStreamLocalUrlHint));
+        OnPropertyChanged(nameof(ObsStreamShowsLanWarning));
+        if (!_suppressObsStreamPersist)
+        {
+            _ = PersistObsStreamSettingsAsync();
+        }
+    }
+
+    partial void OnObsStreamPortChanged(int value)
+    {
+        OnPropertyChanged(nameof(ObsStreamUrlHint));
+        OnPropertyChanged(nameof(ObsStreamLocalUrlHint));
+        OnPropertyChanged(nameof(ObsStreamShowsLanWarning));
+        if (!_suppressObsStreamPersist)
+        {
+            _ = PersistObsStreamSettingsAsync();
+        }
+    }
+
+    partial void OnObsStreamBackdropEnabledChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ObsStreamUrlHint));
+        OnPropertyChanged(nameof(ObsStreamLocalUrlHint));
+        if (!_suppressObsStreamPersist)
+        {
+            _ = PersistObsStreamBackdropSettingsAsync();
+        }
+    }
+
+    partial void OnObsStreamBackdropOpacityChanged(double value)
+    {
+        OnPropertyChanged(nameof(ObsStreamBackdropOpacityLabel));
+        OnPropertyChanged(nameof(ObsStreamUrlHint));
+        OnPropertyChanged(nameof(ObsStreamLocalUrlHint));
+        if (!_suppressObsStreamPersist)
+        {
+            _ = PersistObsStreamBackdropSettingsAsync();
+        }
+    }
+
+    private async Task PersistObsStreamBackdropSettingsAsync()
+    {
+        try
+        {
+            var opacity = Math.Clamp(ObsStreamBackdropOpacity / 100.0, 0, 1);
+            await _displaySettingsService.SetObsStreamBackdropEnabledAsync(ObsStreamBackdropEnabled);
+            await _displaySettingsService.SetObsStreamBackdropOpacityAsync(opacity);
+            _obsStreamService.ApplyBackdropSettings(ObsStreamBackdropEnabled, opacity);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"PersistObsStreamBackdropSettingsAsync: {ex.Message}");
+        }
+    }
+
+    private async Task PersistObsStreamSettingsAsync()
+    {
+        try
+        {
+            await _displaySettingsService.SetObsStreamEnabledAsync(ObsStreamEnabled);
+            await _displaySettingsService.SetObsStreamPortAsync(ObsStreamPort);
+            await _obsStreamService.ApplySettingsAsync(ObsStreamEnabled, ObsStreamPort);
+            var opacity = Math.Clamp(ObsStreamBackdropOpacity / 100.0, 0, 1);
+            _obsStreamService.ApplyBackdropSettings(ObsStreamBackdropEnabled, opacity);
+            RefreshObsStreamStatus();
+            OnPropertyChanged(nameof(ObsStreamUrlHint));
+            OnPropertyChanged(nameof(ObsStreamLocalUrlHint));
+            OnPropertyChanged(nameof(ObsStreamShowsLanWarning));
+        }
+        catch (Exception ex)
+        {
+            ObsStreamStatus = null;
+            await ErrorDialog.ShowAsync("Не удалось запустить OBS-выход", ex);
+        }
+    }
+
+    private void RefreshObsStreamStatus()
+    {
+        if (!ObsStreamEnabled)
+        {
+            ObsStreamStatus = "Выключено";
+            return;
+        }
+
+        if (_obsStreamService.IsRunning)
+        {
+            if (!_obsStreamService.IsListeningOnLan())
+            {
+                var lan = _obsStreamService.GetPreferredLanIPv4();
+                ObsStreamStatus = lan is null
+                    ? "Сервер запущен только на localhost. LAN IP не найден — проверьте сеть."
+                    : $"Сервер на localhost. Для OBS попробуйте http://{lan}:{ObsStreamPort}/obs — если не откроется, разрешите приложение в брандмауэре Windows.";
+            }
+            else
+            {
+                ObsStreamStatus = "Сервер запущен. Подключите OBS Browser Source по LAN URL ниже.";
+            }
+
+            return;
+        }
+
+        ObsStreamStatus = string.IsNullOrWhiteSpace(_obsStreamService.LastError)
+            ? "Не удалось запустить сервер"
+            : $"Ошибка: {_obsStreamService.LastError}";
     }
 
     private async Task LoadAskBeforeCloseAsync()
@@ -1706,7 +1813,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
 
     private void SetTextAlignment(string? alignment)
     {
-        if (alignment is "Left" or "Center" or "Right")
+        if (alignment is "Left" or "Center" or "Right" or "Justify")
         {
             TextAlignment = alignment;
         }
@@ -2507,6 +2614,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
 
     partial void OnSelectedDisplayChanged(DisplayInfo? value)
     {
+        OnPropertyChanged(nameof(ProjectionContentAreaHint));
         if (value is not null)
         {
             SaveDisplaySelectionCommand.ExecuteAsync(null);

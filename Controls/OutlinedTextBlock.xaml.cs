@@ -66,6 +66,7 @@ public sealed partial class OutlinedTextBlock : UserControl
     public OutlinedTextBlock()
     {
         InitializeComponent();
+        Clip = null;
         Loaded += (_, _) => RefreshPresentation();
     }
 
@@ -153,6 +154,7 @@ public sealed partial class OutlinedTextBlock : UserControl
         if (!_outlineMode)
         {
             OutlineCanvas.Visibility = Visibility.Collapsed;
+            OutlineCanvas.Margin = new Thickness(0);
             FillText.Visibility = Visibility.Visible;
             FillText.Opacity = 1;
             ApplyTextBlockLayout();
@@ -162,6 +164,8 @@ public sealed partial class OutlinedTextBlock : UserControl
         }
 
         ApplyTextBlockLayout();
+        var overflow = GetOutlineOverflow();
+        OutlineCanvas.Margin = new Thickness(-overflow);
         // Оставляем живой TextBlock в layout, но делаем невидимым:
         // его метрики полностью совпадают с режимом без контура.
         FillText.Visibility = Visibility.Visible;
@@ -219,11 +223,9 @@ public sealed partial class OutlinedTextBlock : UserControl
 
         try
         {
-            var strokeWidth = GetStrokeWidth();
-            var pad = strokeWidth + 1f;
-            var layoutWidth = Math.Max(
-                1f,
-                (float)Math.Max(FillText?.ActualWidth ?? 0, sender.ActualWidth) - pad * 2);
+            var t = GetStrokeWidth();
+            var pad = t + 2f;
+            var layoutWidth = Math.Max(1f, (float)(FillText?.ActualWidth ?? sender.ActualWidth - pad * 2));
             if (layoutWidth < 1 || sender.ActualHeight < 1)
             {
                 return;
@@ -233,7 +235,6 @@ public sealed partial class OutlinedTextBlock : UserControl
             using var layout = new CanvasTextLayout(sender, Text, format, layoutWidth, float.MaxValue);
             using var geometry = CanvasGeometry.CreateText(layout);
 
-            // Простой origin: не сдвигаем по X (сохраняем выравнивание), по Y учитываем ink выше baseline
             var inkTop = layout.DrawBounds.Top;
             var originY = pad + (float)Math.Max(0, -inkTop);
             var origin = new Vector2(pad, originY);
@@ -248,7 +249,17 @@ public sealed partial class OutlinedTextBlock : UserControl
                 StartCap = CanvasCapStyle.Round,
                 EndCap = CanvasCapStyle.Round
             };
-            args.DrawingSession.DrawGeometry(geometry, origin, outlineColor, strokeWidth, strokeStyle);
+
+            // Как на Web-экране: кольцо смещений радиуса t + лёгкий stroke, затем заливка.
+            const int steps = 16;
+            for (var i = 0; i < steps; i++)
+            {
+                var angle = (float)(i / (double)steps * Math.PI * 2);
+                var offset = new Vector2(MathF.Cos(angle) * t, MathF.Sin(angle) * t);
+                args.DrawingSession.FillGeometry(geometry, origin + offset, outlineColor);
+            }
+
+            args.DrawingSession.DrawGeometry(geometry, origin, outlineColor, Math.Max(0.4f, t * 0.45f), strokeStyle);
             args.DrawingSession.FillGeometry(geometry, origin, fillColor);
         }
         catch (Exception ex)
@@ -262,10 +273,11 @@ public sealed partial class OutlinedTextBlock : UserControl
 
     private float GetStrokeWidth()
     {
-        // На мелком кегле толстая обводка даёт «ореол» вокруг букв — ограничиваем относительно FontSize
-        var maxForSize = Math.Max(0.8, DisplayFontSize * 0.12);
-        return (float)Math.Clamp(OutlineThickness, 0.5, maxForSize);
+        // Та же величина, что у Web-проектора: thickness как есть, без урезания по кеглю.
+        return (float)Math.Max(0.5, OutlineThickness);
     }
+
+    private float GetOutlineOverflow() => GetStrokeWidth() + 2f;
 
     private CanvasTextFormat CreateTextFormat()
     {

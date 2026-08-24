@@ -34,6 +34,7 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
     private int _linesApplyVersion;
     private string _lastVisibleLinesKey = string.Empty;
     private Guid? _lastSongId;
+    private IReadOnlyList<string> _layoutSourceLines = Array.Empty<string>();
 
     public Guid? AppliedThemeId => _appliedTheme?.Id;
 
@@ -114,6 +115,22 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
     /// <summary>Высота холста проекции.</summary>
     [ObservableProperty]
     private double designHeight = 1080;
+
+    /// <summary>Доступная высота под текст (экран минус верхний и нижний отступ).</summary>
+    [ObservableProperty]
+    private double contentHeight = 1000;
+
+    [ObservableProperty]
+    private int projectionMarginLeft = 48;
+
+    [ObservableProperty]
+    private int projectionMarginRight = 48;
+
+    [ObservableProperty]
+    private int projectionMarginTop = 40;
+
+    [ObservableProperty]
+    private int projectionMarginBottom = 40;
 
     /// <summary>Размер шрифта на холсте (подбирается под текст).</summary>
     [ObservableProperty]
@@ -233,7 +250,10 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
             // Пересчитываем строки при изменении размера окна, если включён перенос
             if (TextLayoutMode != TextLayoutMode.ShrinkToFit)
             {
-                _ = RefreshLinesWithDisplayResolutionAsync(_projectionStateService.Current.VisibleLines);
+                var source = _layoutSourceLines.Count > 0
+                    ? _layoutSourceLines
+                    : _projectionStateService.Current.VisibleLines;
+                _ = RefreshLinesWithDisplayResolutionAsync(source);
             }
         }
     }
@@ -248,13 +268,14 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
 
         System.Diagnostics.Debug.WriteLine($"SyncDesignSurface: window={_windowWidth:F0}x{_windowHeight:F0}, display={_displayWidth}x{_displayHeight}, design={w:F0}x{h:F0}");
 
-        // Поля как Margin="64" → 128 суммарно
-        const double margin = 128;
-        LayoutMaxWidth = TextLayoutMode == TextLayoutMode.ShrinkToFit
-            ? Math.Max(200, w)
-            : Math.Max(200, w - margin);
+        // Поля задаются в настройках (по умолчанию 48/48/40/40 — как в Win32 SlideStage)
+        var horizontalMargins = ProjectionMarginLeft + ProjectionMarginRight;
+        var contentWidth = Math.Max(200, w - horizontalMargins);
+        LayoutMaxWidth = contentWidth;
+        ContentHeight = Math.Max(120, h - ProjectionMarginTop - ProjectionMarginBottom);
 
-        System.Diagnostics.Debug.WriteLine($"SyncDesignSurface: LayoutMaxWidth={LayoutMaxWidth:F0}, TextLayoutMode={TextLayoutMode}");
+        System.Diagnostics.Debug.WriteLine(
+            $"SyncDesignSurface: LayoutMaxWidth={LayoutMaxWidth:F0}, ContentHeight={ContentHeight:F0}, margins=L{ProjectionMarginLeft} R{ProjectionMarginRight} T{ProjectionMarginTop} B{ProjectionMarginBottom}, TextLayoutMode={TextLayoutMode}");
     }
 
     private async Task LoadDisplayResolutionAsync()
@@ -298,19 +319,58 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
         IProjectionStateService projectionStateService,
         IDisplaySettingsService displaySettingsService,
         IThemeBackgroundMediaService themeBackgroundMediaService)
+        : this(projectionStateService, displaySettingsService, themeBackgroundMediaService, bindLiveState: true)
+    {
+    }
+
+    public ProjectionDisplayViewModel(
+        IProjectionStateService projectionStateService,
+        IDisplaySettingsService displaySettingsService,
+        IThemeBackgroundMediaService themeBackgroundMediaService,
+        bool bindLiveState)
     {
         _projectionStateService = projectionStateService;
         _displaySettingsService = displaySettingsService;
         _themeBackgroundMediaService = themeBackgroundMediaService;
         _dispatcher = DispatcherQueue.GetForCurrentThread() ?? App.MainDispatcherQueue;
 
-        _projectionStateService.StateChanged += OnProjectionStateChanged;
-        UpdateFromState(_projectionStateService.Current);
-        
-        // Загружаем настройку раскладки текста и разрешение экрана
+        if (bindLiveState)
+        {
+            _projectionStateService.StateChanged += OnProjectionStateChanged;
+            UpdateFromState(_projectionStateService.Current);
+        }
+
         _ = LoadTextLayoutModeAsync();
+        _ = LoadProjectionMarginsAsync();
         _ = LoadDisplayResolutionAsync();
         _ = RefreshBibleReferenceSettingsAsync();
+    }
+
+    private async Task LoadProjectionMarginsAsync()
+    {
+        try
+        {
+            ProjectionMarginLeft = await _displaySettingsService.GetProjectionMarginLeftAsync();
+            ProjectionMarginRight = await _displaySettingsService.GetProjectionMarginRightAsync();
+            ProjectionMarginTop = await _displaySettingsService.GetProjectionMarginTopAsync();
+            ProjectionMarginBottom = await _displaySettingsService.GetProjectionMarginBottomAsync();
+            SyncDesignSurface();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"LoadProjectionMarginsAsync: Ошибка: {ex.Message}");
+        }
+    }
+
+    /// <summary>Применяет отступы из настроек и пересчитывает строки слайда.</summary>
+    public void ApplyProjectionMargins(int left, int right, int top, int bottom)
+    {
+        ProjectionMarginLeft = left;
+        ProjectionMarginRight = right;
+        ProjectionMarginTop = top;
+        ProjectionMarginBottom = bottom;
+        SyncDesignSurface();
+        RefreshLines(_projectionStateService.Current.VisibleLines);
     }
 
     private async Task LoadTextLayoutModeAsync()
@@ -323,7 +383,7 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
             WordWrap = mode != TextLayoutMode.ShrinkToFit;
             SyncDesignSurface();
             _suppressLayoutModeSideEffects = false;
-            RefreshLines(_projectionStateService.Current.VisibleLines);
+            RefreshLines(GetLayoutSourceOrLiveLines());
         }
         catch (Exception ex)
         {
@@ -345,7 +405,7 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
         _activeWallpaperPool = null;
     }
 
-    public void ApplyTheme(ThemePreset? theme, bool startNewBackgroundSession = false)
+    public void ApplyTheme(ThemePreset? theme, bool startNewBackgroundSession = false, bool refreshLines = true)
     {
         System.Diagnostics.Debug.WriteLine($"ApplyTheme: ENTER, theme={theme?.Name ?? "null"}, startNewBackgroundSession={startNewBackgroundSession}");
         ChyguiSlide.Data.InteractionLogger.Log($"ApplyTheme: ENTER, theme={theme?.Name ?? "null"}, startNewBackgroundSession={startNewBackgroundSession}");
@@ -423,9 +483,14 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
             && theme is not null
             && previousThemeId == theme.Id;
 
+        if (!refreshLines)
+        {
+            return;
+        }
+
         if (!sameTheme)
         {
-            RefreshLines(_projectionStateService.Current.VisibleLines);
+            RefreshLines(GetLayoutSourceOrLiveLines());
         }
         else
         {
@@ -565,14 +630,14 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
     {
         System.Diagnostics.Debug.WriteLine($"OnFontWeightChanged: FontWeight изменён на {value.Weight}");
         // При изменении FontWeight обновляем все строки
-        RefreshLines(_projectionStateService.Current.VisibleLines);
+        RefreshLines(GetLayoutSourceOrLiveLines());
     }
 
     partial void OnTextAlignmentChanged(string value)
     {
         System.Diagnostics.Debug.WriteLine($"OnTextAlignmentChanged: TextAlignment изменён на {value}");
         // При изменении TextAlignment обновляем все строки
-        RefreshLines(_projectionStateService.Current.VisibleLines);
+        RefreshLines(GetLayoutSourceOrLiveLines());
     }
 
     partial void OnWordWrapChanged(bool value)
@@ -673,6 +738,30 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
         NotifyReferenceVisibility();
         RefreshLines(state.VisibleLines);
     }
+
+    /// <summary>
+    /// Предпросмотр слайда без живой трансляции: тема и текст выбранной секции.
+    /// </summary>
+    public void ApplyLookahead(
+        IReadOnlyList<string> lines,
+        string? songTitle,
+        ThemePreset? theme,
+        string? referenceCaption = null)
+    {
+        // Без промежуточного RefreshLines(Empty): иначе превью мигает при смене слайда.
+        ApplyTheme(theme, startNewBackgroundSession: false, refreshLines: false);
+
+        SongTitle = songTitle;
+        ReferenceCaption = string.IsNullOrWhiteSpace(referenceCaption) ? null : referenceCaption.Trim();
+        NotifyReferenceVisibility();
+        RefreshLines(lines);
+        IsBlackout = false;
+    }
+
+    private IReadOnlyList<string> GetLayoutSourceOrLiveLines()
+        => _layoutSourceLines.Count > 0
+            ? _layoutSourceLines
+            : _projectionStateService.Current.VisibleLines;
 
     private static SectionTransitionMode NormalizeTransition(SectionTransitionMode? mode)
     {
@@ -964,6 +1053,7 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
         Lines.Clear();
         SyncDesignSurface();
         OnPropertyChanged(nameof(ReferenceFontSize));
+        _layoutSourceLines = lines;
         _lastVisibleLinesKey = BuildLinesKey(lines);
 
         System.Diagnostics.Debug.WriteLine(
@@ -1013,7 +1103,7 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
     {
         var maxWidth = LayoutMaxWidth;
         var captionReserve = EstimateReferenceCaptionReserve();
-        var maxHeight = Math.Max(120, DesignHeight - 128 - captionReserve);
+        var maxHeight = Math.Max(120, ContentHeight - captionReserve);
         double font = Math.Min(maxWidth, maxHeight);
         foreach (var line in lines)
         {
@@ -1079,9 +1169,9 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
     {
         SyncDesignSurface();
         var availableWidth = LayoutMaxWidth;
-        // Margin=64*2 + запас под подпись стиха, чтобы она не обрезалась
+        // Запас под подпись стиха, чтобы она не обрезалась
         var captionReserve = EstimateReferenceCaptionReserve();
-        var availableHeight = Math.Max(120, (DesignHeight - 128 - captionReserve) * 0.94);
+        var availableHeight = Math.Max(120, (ContentHeight - captionReserve) * 0.94);
 
         System.Diagnostics.Debug.WriteLine($"LayoutSlideForMaxFontWithSize: availableWidth={availableWidth:F0}, availableHeight={availableHeight:F0}, captionReserve={captionReserve:F0}");
 
@@ -1410,11 +1500,11 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
         var windowWidth = _windowWidth > 0 ? _windowWidth : 1920;
         var windowHeight = _windowHeight > 0 ? _windowHeight : 1080;
         
-        // Вычисляем доступную область с учетом отступов
-        // Margin="64" в StackPanel, Spacing="12" между строками, Spacing="32" между элементами
-        var margin = 128; // 64*2 для margin
-        var availableWidth = windowWidth - margin;
-        var availableHeight = windowHeight - margin;
+        // Вычисляем доступную область с учетом отступов проекции
+        var horizontalMargins = ProjectionMarginLeft + ProjectionMarginRight;
+        var verticalMargins = ProjectionMarginTop + ProjectionMarginBottom;
+        var availableWidth = windowWidth - horizontalMargins;
+        var availableHeight = windowHeight - verticalMargins;
         
         // Вычисляем aspect ratio окна
         var aspectRatio = (double)availableWidth / availableHeight;

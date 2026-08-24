@@ -1206,6 +1206,9 @@ namespace ChyguiSlide
                     });
                     
                     services.AddSingleton<IProjectionDisplayService, ProjectionDisplayService>();
+                    services.AddSingleton<IObsStreamService, ObsStreamService>();
+                    services.AddSingleton<ObsProjectionBridge>();
+                    services.AddHostedService<ObsStreamHostedService>();
                     services.AddSingleton<IBibleService, BibleService>();
                     services.AddSingleton<ILoggingService, LoggingService>();
                     services.AddSingleton<MainViewModel>();

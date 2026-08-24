@@ -1,0 +1,114 @@
+html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: transparent;
+}
+
+body {
+    position: relative;
+    min-height: 100%;
+}
+
+#backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background: transparent;
+    pointer-events: none;
+}
+
+#stage {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    overflow: hidden;
+    background: transparent;
+}
+
+.text-layer {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    text-align: center;
+    padding: 40px 48px;
+    box-sizing: border-box;
+    will-change: opacity, transform, filter;
+    color: #f5f2ea;
+    font-size: 48px;
+    font-family: 'Segoe UI', sans-serif;
+    font-weight: 400;
+    gap: 12px;
+}
+
+.text-layer .slide-text {
+    color: inherit;
+    font-family: inherit;
+    font-weight: inherit;
+    line-height: 1.2;
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+    hyphens: auto;
+    width: 100%;
+    max-width: 100%;
+    flex: 1 1 auto;
+    display: block;
+    opacity: 1;
+}
+
+.text-layer .line {
+    color: inherit;
+    font-size: 1em;
+    font-family: inherit;
+    font-weight: inherit;
+    line-height: 1.25;
+    white-space: normal;
+    overflow-wrap: break-word;
+    max-width: 100%;
+    opacity: 1;
+}
+
+.text-layer .line ~ .line {
+    opacity: 0.85;
+}
+
+.text-layer .reference {
+    font-size: 28px;
+    color: inherit;
+    opacity: 0.9;
+    font-family: inherit;
+    font-weight: inherit;
+    white-space: normal;
+    max-width: 100%;
+    line-height: 1.25;
+}
+
+.text-layer .reference.align-left { text-align: left; align-self: stretch; }
+.text-layer .reference.align-center { text-align: center; align-self: stretch; }
+.text-layer .reference.align-right { text-align: right; align-self: stretch; }
+
+.text-layer .reference.pos-top,
+.text-layer .reference.pos-bottom {
+    position: absolute;
+    left: 48px;
+    right: 48px;
+}
+
+.text-layer .reference.pos-top { top: 40px; }
+.text-layer .reference.pos-bottom { bottom: 40px; }
+
+.text-layer.has-reference.pos-screen-ref {
+    justify-content: flex-start;
+    padding-top: 72px;
+}
+
+.text-layer.has-reference.pos-screen-ref-bottom {
+    justify-content: flex-end;
+    padding-bottom: 72px;
+}

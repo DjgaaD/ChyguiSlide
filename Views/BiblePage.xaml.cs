@@ -1,52 +1,36 @@
 using System;
-using System.Collections.Generic;
 using System.Collections.Specialized;
-using System.Globalization;
-using System.Linq;
 using ChyguiSlide.Services;
 using ChyguiSlide.Services.Models;
 using ChyguiSlide.ViewModels;
+using ChyguiSlide.Views.UiAnimation;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.UI;
-using Microsoft.UI.Text;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
-using Windows.UI;
 using System.Threading.Tasks;
 
 namespace ChyguiSlide.Views;
 
 public sealed partial class BiblePage : Page
 {
-    private const int BookColumns = 11;
-    private const int ChapterColumns = 8;
-    private const int VerseColumns = 6;
+    private ListSelectionStripeBinder? _verseStripe;
+    private CatalogLookaheadPreview? _lookaheadPreview;
 
-    private static readonly Brush CellStroke =
-        new SolidColorBrush(Color.FromArgb(0x40, 0x00, 0x00, 0x00));
+    public static readonly DependencyProperty ModernBookTileFontSizeProperty =
+        DependencyProperty.Register(
+            nameof(ModernBookTileFontSize),
+            typeof(double),
+            typeof(BiblePage),
+            new PropertyMetadata(14.0));
 
-    private static readonly Brush ChapterFill =
-        new SolidColorBrush(Color.FromArgb(0xFF, 0x8B, 0x6B, 0x3D));
-
-    private static readonly Brush VerseFill =
-        new SolidColorBrush(Color.FromArgb(0xFF, 0xC4, 0xA5, 0x74));
-
-    private static readonly Brush WhiteText = new SolidColorBrush(Colors.White);
-    private static readonly Brush VerseText =
-        new SolidColorBrush(Color.FromArgb(0xFF, 0x1A, 0x12, 0x08));
-    private static readonly Brush SecondaryWhite =
-        new SolidColorBrush(Color.FromArgb(0xE6, 0xFF, 0xFF, 0xFF));
-
-    private static readonly Dictionary<string, Brush> BookColorCache = new(StringComparer.OrdinalIgnoreCase);
-
-    private bool _booksDirty;
-    private bool _chaptersDirty;
-    private bool _versesDirty;
-    private bool _rebuildQueued;
-    private Brush? _accentBrush;
+    public double ModernBookTileFontSize
+    {
+        get => (double)GetValue(ModernBookTileFontSizeProperty);
+        set => SetValue(ModernBookTileFontSizeProperty, value);
+    }
 
     public BibleViewModel ViewModel { get; }
 
@@ -57,23 +41,22 @@ public sealed partial class BiblePage : Page
         DataContext = ViewModel;
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         ViewModel.SearchFocusRequested += OnSearchFocusRequested;
-        ViewModel.Books.CollectionChanged += OnBooksChanged;
-        ViewModel.Chapters.CollectionChanged += OnChaptersChanged;
-        ViewModel.Verses.CollectionChanged += OnVersesChanged;
+        ViewModel.OldTestamentBooks.CollectionChanged += OnModernBookListsChanged;
+        ViewModel.NewTestamentBooks.CollectionChanged += OnModernBookListsChanged;
     }
 
     private async void OnPageLoaded(object sender, RoutedEventArgs e)
     {
+        await ApplyModernLayoutAsync();
         await ViewModel.InitializeAsync();
         SyncChapterSelection();
-        MarkAllTablesDirty();
-        QueueTableRebuild();
         if (string.IsNullOrWhiteSpace(GetActiveSearchBox().Text) && ViewModel.IsSearchMode)
         {
             ViewModel.ApplySearch(null);
         }
 
         await FocusSearchBoxIfRequestedAsync();
+        _ = RefreshLookaheadPreviewAsync();
     }
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
@@ -82,8 +65,7 @@ public sealed partial class BiblePage : Page
         // Без отписки старые экземпляры страницы «съедают» RequestSearchFocus
         // (ConsumePendingSearchFocusRequest) — горячая клавиша перестаёт фокусировать поиск.
         ViewModel.SearchFocusRequested -= OnSearchFocusRequested;
-        SearchBox.Text = string.Empty;
-        GridSearchBox.Text = string.Empty;
+        SearchBoxModern.Text = string.Empty;
         ViewModel.ApplySearch(null);
     }
 
@@ -92,6 +74,7 @@ public sealed partial class BiblePage : Page
         base.OnNavigatedTo(e);
         ViewModel.SearchFocusRequested -= OnSearchFocusRequested;
         ViewModel.SearchFocusRequested += OnSearchFocusRequested;
+        _ = ApplyModernLayoutAsync();
     }
 
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -101,315 +84,45 @@ public sealed partial class BiblePage : Page
             SyncChapterSelection();
         }
 
-        if (e.PropertyName is nameof(BibleViewModel.PickerLayout))
+        if (e.PropertyName is nameof(BibleViewModel.SelectedBook))
         {
-            MarkAllTablesDirty();
-            QueueTableRebuild();
+            SyncModernBookSelection();
         }
 
         if (e.PropertyName is nameof(BibleViewModel.SelectedBook)
             or nameof(BibleViewModel.SelectedChapter)
-            or nameof(BibleViewModel.SelectedVerse))
+            or nameof(BibleViewModel.IsSearchMode))
         {
-            DispatcherQueue.TryEnqueue(UpdateTableSelectionChrome);
+            _verseStripe?.ResetReady();
+            _ = RefreshLookaheadPreviewAsync();
         }
-    }
-
-    private void OnBooksChanged(object? sender, NotifyCollectionChangedEventArgs e)
-    {
-        _booksDirty = true;
-        QueueTableRebuild();
-    }
-
-    private void OnChaptersChanged(object? sender, NotifyCollectionChangedEventArgs e)
-    {
-        _chaptersDirty = true;
-        QueueTableRebuild();
-    }
-
-    private void OnVersesChanged(object? sender, NotifyCollectionChangedEventArgs e)
-    {
-        _versesDirty = true;
-        QueueTableRebuild();
-    }
-
-    private void MarkAllTablesDirty()
-    {
-        _booksDirty = true;
-        _chaptersDirty = true;
-        _versesDirty = true;
-    }
-
-    private void QueueTableRebuild()
-    {
-        if (_rebuildQueued || !ViewModel.IsGridPickerLayout)
+        else if (e.PropertyName is nameof(BibleViewModel.SelectedVerse))
         {
-            return;
-        }
-
-        _rebuildQueued = true;
-        DispatcherQueue.TryEnqueue(() =>
-        {
-            _rebuildQueued = false;
-            if (!ViewModel.IsGridPickerLayout)
-            {
-                return;
-            }
-
-            _accentBrush ??= ThemeBrushHelper.Get("AccentFillColorDefaultBrush", this)
-                             ?? new SolidColorBrush(Color.FromArgb(0xFF, 0x51, 0x2B, 0xD4));
-
-            if (_booksDirty)
-            {
-                RebuildBookTable();
-                _booksDirty = false;
-            }
-
-            if (_chaptersDirty)
-            {
-                RebuildChapterTable();
-                _chaptersDirty = false;
-            }
-
-            if (_versesDirty)
-            {
-                RebuildVerseTable();
-                _versesDirty = false;
-            }
-        });
-    }
-
-    private void RebuildBookTable()
-    {
-        BuildUniformTable(
-            BookTable,
-            ViewModel.Books.Count,
-            BookColumns,
-            index =>
-            {
-                var book = ViewModel.Books[index];
-                var selected = ReferenceEquals(book, ViewModel.SelectedBook);
-                var cell = CreateBookCell(book, selected);
-                cell.Tag = book;
-                cell.Tapped += OnBookCellTapped;
-                return cell;
-            });
-    }
-
-    private void RebuildChapterTable()
-    {
-        BuildUniformTable(
-            ChapterTable,
-            ViewModel.Chapters.Count,
-            ChapterColumns,
-            index =>
-            {
-                var chapter = ViewModel.Chapters[index];
-                var selected = ViewModel.SelectedChapter == chapter;
-                var cell = CreateNumberCell(
-                    ChapterFill,
-                    WhiteText,
-                    chapter.ToString(CultureInfo.InvariantCulture),
-                    selected);
-                cell.Tag = chapter;
-                cell.Tapped += OnChapterCellTapped;
-                return cell;
-            });
-    }
-
-    private void RebuildVerseTable()
-    {
-        BuildUniformTable(
-            VerseTable,
-            ViewModel.Verses.Count,
-            VerseColumns,
-            index =>
-            {
-                var verse = ViewModel.Verses[index];
-                var selected = ReferenceEquals(verse, ViewModel.SelectedVerse);
-                var cell = CreateNumberCell(
-                    VerseFill,
-                    VerseText,
-                    verse.VerseNumber.ToString(CultureInfo.InvariantCulture),
-                    selected);
-                cell.Tag = verse;
-                cell.Tapped += OnVerseCellTapped;
-                return cell;
-            });
-    }
-
-    private static void BuildUniformTable(
-        Grid table,
-        int itemCount,
-        int columns,
-        Func<int, FrameworkElement> createCell)
-    {
-        table.Children.Clear();
-        table.RowDefinitions.Clear();
-        table.ColumnDefinitions.Clear();
-
-        if (itemCount <= 0)
-        {
-            return;
-        }
-
-        columns = Math.Clamp(columns, 1, itemCount);
-        var rows = (int)Math.Ceiling(itemCount / (double)columns);
-
-        for (var c = 0; c < columns; c++)
-        {
-            table.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        }
-
-        for (var r = 0; r < rows; r++)
-        {
-            table.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        }
-
-        for (var i = 0; i < itemCount; i++)
-        {
-            var cell = createCell(i);
-            Grid.SetRow(cell, i / columns);
-            Grid.SetColumn(cell, i % columns);
-            table.Children.Add(cell);
-        }
-    }
-
-    private Border CreateBookCell(BibleBook book, bool selected)
-    {
-        var panel = new StackPanel
-        {
-            Spacing = 1,
-            Children =
-            {
-                new TextBlock
-                {
-                    Text = book.Abbreviation,
-                    FontSize = 28,
-                    FontWeight = FontWeights.Bold,
-                    Foreground = WhiteText,
-                    HorizontalAlignment = HorizontalAlignment.Center
-                },
-                new TextBlock
-                {
-                    Text = book.RussianName,
-                    FontSize = 12,
-                    Foreground = SecondaryWhite,
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    TextTrimming = TextTrimming.CharacterEllipsis,
-                    MaxLines = 1
-                }
-            }
-        };
-
-        return new Border
-        {
-            Background = GetBookBrush(book.CategoryColorHex),
-            BorderBrush = selected ? _accentBrush : CellStroke,
-            BorderThickness = new Thickness(2),
-            Child = new Viewbox
-            {
-                Stretch = Stretch.Uniform,
-                Margin = new Thickness(3),
-                Child = panel
-            },
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Stretch
-        };
-    }
-
-    private Border CreateNumberCell(Brush background, Brush foreground, string text, bool selected) =>
-        new()
-        {
-            Background = background,
-            BorderBrush = selected ? _accentBrush : CellStroke,
-            BorderThickness = new Thickness(2),
-            Child = new Viewbox
-            {
-                Stretch = Stretch.Uniform,
-                Margin = new Thickness(4),
-                Child = new TextBlock
-                {
-                    Text = text,
-                    FontSize = 32,
-                    FontWeight = FontWeights.Bold,
-                    Foreground = foreground,
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Center
-                }
-            },
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Stretch
-        };
-
-    private void UpdateTableSelectionChrome()
-    {
-        if (!ViewModel.IsGridPickerLayout)
-        {
-            return;
-        }
-
-        _accentBrush ??= ThemeBrushHelper.Get("AccentFillColorDefaultBrush", this)
-                         ?? new SolidColorBrush(Color.FromArgb(0xFF, 0x51, 0x2B, 0xD4));
-
-        foreach (var child in BookTable.Children.OfType<Border>())
-        {
-            var selected = child.Tag is BibleBook book && ReferenceEquals(book, ViewModel.SelectedBook);
-            child.BorderBrush = selected ? _accentBrush : CellStroke;
-        }
-
-        foreach (var child in ChapterTable.Children.OfType<Border>())
-        {
-            var selected = child.Tag is int chapter && ViewModel.SelectedChapter == chapter;
-            child.BorderBrush = selected ? _accentBrush : CellStroke;
-        }
-
-        foreach (var child in VerseTable.Children.OfType<Border>())
-        {
-            var selected = child.Tag is BibleVerseItem verse && ReferenceEquals(verse, ViewModel.SelectedVerse);
-            child.BorderBrush = selected ? _accentBrush : CellStroke;
-        }
-    }
-
-    private void OnBookCellTapped(object sender, TappedRoutedEventArgs e)
-    {
-        if (sender is Border { Tag: BibleBook book })
-        {
-            ViewModel.SelectedBook = book;
-        }
-    }
-
-    private void OnChapterCellTapped(object sender, TappedRoutedEventArgs e)
-    {
-        if (sender is Border { Tag: int chapter })
-        {
-            ViewModel.SelectedChapter = chapter;
-        }
-    }
-
-    private void OnVerseCellTapped(object sender, TappedRoutedEventArgs e)
-    {
-        if (sender is Border { Tag: BibleVerseItem verse })
-        {
-            ViewModel.SelectedVerse = verse;
+            _verseStripe?.RequestUpdate(animate: true);
+            _ = RefreshLookaheadPreviewAsync();
         }
     }
 
     private void SyncChapterSelection()
     {
-        if (ViewModel.SelectedChapter is int chapter && ChapterList.Items.Contains(chapter))
+        if (ChapterGridModern is null)
         {
-            ChapterList.SelectedItem = chapter;
+            return;
+        }
+
+        if (ViewModel.SelectedChapter is int chapter && ChapterGridModern.Items.Contains(chapter))
+        {
+            ChapterGridModern.SelectedItem = chapter;
         }
         else if (ViewModel.SelectedChapter is null)
         {
-            ChapterList.SelectedItem = null;
+            ChapterGridModern.SelectedItem = null;
         }
     }
 
     private void OnChapterSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (ChapterList.SelectedItem is int chapter)
+        if (sender is ListViewBase { SelectedItem: int chapter })
         {
             ViewModel.SelectedChapter = chapter;
         }
@@ -421,10 +134,7 @@ public sealed partial class BiblePage : Page
         if (!ViewModel.IsSearchMode)
         {
             sender.Text = string.Empty;
-            SyncSearchBoxes(sender);
             SyncChapterSelection();
-            MarkAllTablesDirty();
-            QueueTableRebuild();
         }
     }
 
@@ -435,28 +145,15 @@ public sealed partial class BiblePage : Page
             return;
         }
 
-        SyncSearchBoxes(sender);
         ViewModel.ApplySearch(sender.Text);
 
         if (!ViewModel.IsSearchMode)
         {
             SyncChapterSelection();
-            MarkAllTablesDirty();
-            QueueTableRebuild();
         }
     }
 
-    private void SyncSearchBoxes(AutoSuggestBox source)
-    {
-        var other = ReferenceEquals(source, SearchBox) ? GridSearchBox : SearchBox;
-        if (other.Text != source.Text)
-        {
-            other.Text = source.Text;
-        }
-    }
-
-    private AutoSuggestBox GetActiveSearchBox() =>
-        ViewModel.IsGridPickerLayout ? GridSearchBox : SearchBox;
+    private AutoSuggestBox GetActiveSearchBox() => SearchBoxModern;
 
     private void OnSearchResultSelected(object sender, SelectionChangedEventArgs e)
     {
@@ -464,8 +161,6 @@ public sealed partial class BiblePage : Page
         {
             ViewModel.NavigateToSearchResult(item);
             SyncChapterSelection();
-            MarkAllTablesDirty();
-            QueueTableRebuild();
         }
     }
 
@@ -478,7 +173,6 @@ public sealed partial class BiblePage : Page
             return;
         }
 
-        // Ждём layout (список/сетка) — иначе Focus на Collapsed AutoSuggestBox молча падает.
         await Task.Delay(50);
         var box = GetActiveSearchBox();
         box.Focus(FocusState.Keyboard);
@@ -510,31 +204,286 @@ public sealed partial class BiblePage : Page
         }
     }
 
-    private static Brush GetBookBrush(string hex)
+    private async Task ApplyModernLayoutAsync()
     {
-        if (BookColorCache.TryGetValue(hex, out var cached))
+        await ApplyPreviewCanvasAsync();
+        EnsureModernVerseStripe();
+        EnsureLookaheadPreview();
+        SyncChapterSelection();
+        SyncModernBookSelection();
+        ApplyModernBookTileLayout();
+        _ = RefreshLookaheadPreviewAsync();
+    }
+
+    private void EnsureModernVerseStripe()
+    {
+        if (VerseListModern is null || ModernVerseStripe is null || ModernVerseHost is null)
         {
-            return cached;
+            return;
         }
 
-        var cleaned = (hex ?? string.Empty).Trim();
-        if (cleaned.StartsWith('#'))
+        _verseStripe ??= new ListSelectionStripeBinder(
+            VerseListModern,
+            ModernVerseStripe,
+            ModernVerseHost,
+            () => ViewModel.SelectedVerse,
+            DispatcherQueue);
+        _verseStripe.Attach();
+        _verseStripe.RequestUpdate(animate: false);
+    }
+
+    private void EnsureLookaheadPreview()
+    {
+        if (BibleWebPreview is null || BiblePreviewIdleHint is null)
         {
-            cleaned = cleaned[1..];
+            return;
         }
 
-        Brush brush = ChapterFill;
-        if (cleaned.Length == 6
-            && uint.TryParse(cleaned, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var rgb))
+        _lookaheadPreview ??= new CatalogLookaheadPreview(BibleWebPreview, BiblePreviewIdleHint);
+    }
+
+    private async Task ApplyPreviewCanvasAsync()
+    {
+        var (width, height) = await ProjectionOutputSize.GetAsync();
+        if (BiblePreviewCanvas is not null)
         {
-            brush = new SolidColorBrush(Color.FromArgb(
-                0xFF,
-                (byte)((rgb >> 16) & 0xFF),
-                (byte)((rgb >> 8) & 0xFF),
-                (byte)(rgb & 0xFF)));
+            ProjectionOutputSize.ApplyCanvas(BiblePreviewCanvas, width, height);
         }
 
-        BookColorCache[hex] = brush;
-        return brush;
+        BibleWebPreview?.ApplyOutputSize(width, height);
+    }
+
+    private async Task RefreshLookaheadPreviewAsync()
+    {
+        if (_lookaheadPreview is null)
+        {
+            return;
+        }
+
+        var verse = ViewModel.SelectedVerse;
+        var content = verse is null
+            ? null
+            : $"{verse.VerseNumber}  {verse.Text}";
+        await _lookaheadPreview.ShowContentAsync(verse?.Reference, content, verse?.Reference);
+    }
+
+    private bool _syncingModernBookSelection;
+
+    private const int ModernBookColumns = 3;
+    private const double ModernBookTileMinHeight = 40;
+    private const double ModernBookGridViewChromeEach = 8;
+    private const double ModernBookLayoutFudge = 4;
+    private const double ModernBookTileFontMin = 10;
+    private const double ModernBookTileFontMax = 18;
+    private const double ModernBookTileTextPaddingVertical = 6;
+
+    private void OnModernBookListsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, ApplyModernBookTileLayout);
+    }
+
+    private bool _applyingModernBookTiles;
+
+    private void OnModernBookGridLoaded(object sender, RoutedEventArgs e)
+    {
+        ApplyModernBookTileLayout();
+    }
+
+    private void OnModernBooksHostSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        ApplyModernBookTileLayout();
+    }
+
+    private void ApplyModernBookTileLayout()
+    {
+        if (ModernBooksScroll is null || ModernBooksHost is null)
+        {
+            return;
+        }
+
+        if (_applyingModernBookTiles)
+        {
+            return;
+        }
+
+        _applyingModernBookTiles = true;
+        try
+        {
+            var viewportWidth = ModernBooksScroll.ActualWidth;
+            var viewportHeight = ModernBooksScroll.ActualHeight;
+            if (viewportWidth < 90 || viewportHeight < 80)
+            {
+                return;
+            }
+
+            var innerWidth = Math.Max(
+                90,
+                viewportWidth - ModernBooksHost.Margin.Left - ModernBooksHost.Margin.Right);
+            if (double.IsNaN(ModernBooksHost.Width) || Math.Abs(ModernBooksHost.Width - innerWidth) > 0.5)
+            {
+                ModernBooksHost.Width = innerWidth;
+            }
+
+            var tileWidth = Math.Floor(innerWidth / ModernBookColumns);
+            var (tileHeight, enableScroll) = ComputeModernBookTileHeight(viewportHeight);
+            UpdateModernBookTileFontSize(tileHeight);
+
+            if (enableScroll)
+            {
+                ModernBooksScroll.VerticalScrollMode = ScrollMode.Enabled;
+                ModernBooksScroll.VerticalScrollBarVisibility = ScrollBarVisibility.Hidden;
+            }
+            else
+            {
+                ModernBooksScroll.VerticalScrollMode = ScrollMode.Disabled;
+                ModernBooksScroll.VerticalScrollBarVisibility = ScrollBarVisibility.Disabled;
+            }
+
+            ApplyModernBookTileSize(OldTestamentListModern, tileWidth, tileHeight);
+            ApplyModernBookTileSize(NewTestamentListModern, tileWidth, tileHeight);
+        }
+        finally
+        {
+            _applyingModernBookTiles = false;
+        }
+    }
+
+    private (double Height, bool EnableScroll) ComputeModernBookTileHeight(double viewportHeight)
+    {
+        var rows = CountTileRows(ViewModel.OldTestamentBooks.Count)
+                   + CountTileRows(ViewModel.NewTestamentBooks.Count);
+        if (rows < 1)
+        {
+            return (ModernBookTileMinHeight, false);
+        }
+
+        var otHeader = OldTestamentHeaderModern;
+        var ntHeader = NewTestamentHeaderModern;
+        var otHeight = otHeader?.ActualHeight ?? 0;
+        var ntHeight = ntHeader?.ActualHeight ?? 0;
+        if (otHeight < 4 || ntHeight < 4)
+        {
+            DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, ApplyModernBookTileLayout);
+            otHeight = Math.Max(otHeight, 16);
+            ntHeight = Math.Max(ntHeight, 16);
+        }
+
+        // TextBlock.ActualHeight excludes Margin; StackPanel adds header margins.
+        var chrome = otHeight + VerticalMargin(otHeader)
+                     + ntHeight + VerticalMargin(ntHeader)
+                     + VerticalMargin(ModernBooksHost)
+                     + ModernBookGridViewChromeEach * 2;
+        var available = viewportHeight - chrome - ModernBookLayoutFudge;
+        var fitted = Math.Floor(available / rows);
+        if (fitted < ModernBookTileMinHeight)
+        {
+            return (ModernBookTileMinHeight, true);
+        }
+
+        return (fitted, false);
+    }
+
+    private void UpdateModernBookTileFontSize(double tileHeight)
+    {
+        var itemMarginVertical = 2;
+        var inner = tileHeight - itemMarginVertical - ModernBookTileTextPaddingVertical;
+        var size = Math.Clamp(Math.Floor(inner), ModernBookTileFontMin, ModernBookTileFontMax);
+        if (Math.Abs(ModernBookTileFontSize - size) > 0.1)
+        {
+            ModernBookTileFontSize = size;
+        }
+    }
+
+    private static double VerticalMargin(FrameworkElement? element)
+        => element is null ? 0 : element.Margin.Top + element.Margin.Bottom;
+
+    private static int CountTileRows(int itemCount)
+        => itemCount <= 0 ? 0 : (int)Math.Ceiling(itemCount / (double)ModernBookColumns);
+
+    private void ApplyModernBookTileSize(GridView? grid, double tileWidth, double tileHeight)
+    {
+        if (grid is null)
+        {
+            return;
+        }
+
+        grid.Width = tileWidth * ModernBookColumns;
+        grid.ClearValue(HeightProperty);
+        var wrap = grid.ItemsPanelRoot as ItemsWrapGrid ?? FindDescendant<ItemsWrapGrid>(grid);
+        if (wrap is null)
+        {
+            DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, ApplyModernBookTileLayout);
+            return;
+        }
+
+        wrap.Orientation = Orientation.Horizontal;
+        wrap.MaximumRowsOrColumns = ModernBookColumns;
+        wrap.ItemWidth = Math.Max(24, tileWidth);
+        wrap.ItemHeight = Math.Max(ModernBookTileMinHeight, tileHeight);
+    }
+
+    private void OnModernBookSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_syncingModernBookSelection)
+        {
+            return;
+        }
+
+        if (sender is not ListViewBase { SelectedItem: BibleBook book })
+        {
+            return;
+        }
+
+        if (!ReferenceEquals(ViewModel.SelectedBook, book))
+        {
+            ViewModel.SelectedBook = book;
+        }
+
+        SyncModernBookSelection();
+    }
+
+    private void SyncModernBookSelection()
+    {
+        if (OldTestamentListModern is null || NewTestamentListModern is null)
+        {
+            return;
+        }
+
+        _syncingModernBookSelection = true;
+        try
+        {
+            var selected = ViewModel.SelectedBook;
+            OldTestamentListModern.SelectedItem = selected is not null && !selected.IsNewTestament
+                ? selected
+                : null;
+            NewTestamentListModern.SelectedItem = selected is not null && selected.IsNewTestament
+                ? selected
+                : null;
+        }
+        finally
+        {
+            _syncingModernBookSelection = false;
+        }
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
+    {
+        var count = VisualTreeHelper.GetChildrenCount(root);
+        for (var i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match)
+            {
+                return match;
+            }
+
+            var nested = FindDescendant<T>(child);
+            if (nested is not null)
+            {
+                return nested;
+            }
+        }
+
+        return null;
     }
 }

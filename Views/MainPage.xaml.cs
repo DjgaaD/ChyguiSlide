@@ -1,12 +1,10 @@
 using ChyguiSlide.Services.Abstractions;
 using ChyguiSlide.Services.Implementations;
-using ChyguiSlide.Services.Models;
 using ChyguiSlide.ViewModels;
 using ChyguiSlide.Views.Dialogs;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Animation;
 
 namespace ChyguiSlide.Views;
@@ -15,6 +13,7 @@ public sealed partial class MainPage : Page
 {
     private readonly HotkeyDispatcher _hotkeyDispatcher;
     private bool _startupUpdateCheckStarted;
+    private bool _modernNavStripeReady;
 
     public MainViewModel ViewModel { get; }
 
@@ -27,6 +26,7 @@ public sealed partial class MainPage : Page
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
         Loaded += OnPageLoaded;
         Unloaded += OnPageUnloaded;
+        ApplyModernChrome();
     }
 
     private void OnViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -41,32 +41,14 @@ public sealed partial class MainPage : Page
         NavigateToSelection(ViewModel.SelectedItem, new SuppressNavigationTransitionInfo());
     }
 
-    /// <summary>Применить предпочтение свёрнутости меню (из настроек).</summary>
-    public void ApplyNavigationPaneMode(NavigationPaneMode mode)
+    private void ApplyModernChrome()
     {
-        var isOpen = mode == NavigationPaneMode.Expanded;
-        if (ShellNav.IsPaneOpen != isOpen)
-        {
-            ShellNav.IsPaneOpen = isOpen;
-        }
-
-        UpdateNavLabelVisibility(isOpen);
-    }
-
-    public static void TryApplyNavigationPaneMode(NavigationPaneMode mode)
-    {
-        try
-        {
-            if (App.MainWindow?.Content is Frame rootFrame
-                && rootFrame.Content is MainPage mainPage)
-            {
-                mainPage.ApplyNavigationPaneMode(mode);
-            }
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"TryApplyNavigationPaneMode: {ex.Message}");
-        }
+        ModernHeader.Visibility = Visibility.Visible;
+        ShellNav.PaneDisplayMode = NavigationViewPaneDisplayMode.LeftMinimal;
+        ShellNav.IsPaneToggleButtonVisible = false;
+        ShellNav.IsPaneOpen = false;
+        ShellNav.OpenPaneLength = 0;
+        ShellNav.CompactPaneLength = 0;
     }
 
     private async void OnPageLoaded(object sender, RoutedEventArgs e)
@@ -117,66 +99,54 @@ public sealed partial class MainPage : Page
 
     private void OnNavigationViewLoaded(object sender, RoutedEventArgs e)
     {
+        ApplyModernChrome();
         ShellNav.SelectedItem = ViewModel.SelectedItem;
         NavigateToSelection(ViewModel.SelectedItem, new EntranceNavigationTransitionInfo());
 
-        UpdateNavLabelVisibility(ShellNav.IsPaneOpen);
-        _ = RestoreNavigationPaneStateAsync();
-
-        ShellNav.PaneOpening += OnNavigationPaneOpening;
-        ShellNav.PaneClosing += OnNavigationPaneClosing;
-    }
-
-    private async Task RestoreNavigationPaneStateAsync()
-    {
-        try
+        if (ModernNavList is not null)
         {
-            var settings = App.AppHost.Services.GetRequiredService<IDisplaySettingsService>();
-            var mode = await settings.GetNavigationPaneModeAsync();
-            ApplyNavigationPaneMode(mode);
-        }
-        catch
-        {
-            ApplyNavigationPaneMode(NavigationPaneMode.Collapsed);
+            ModernNavList.SelectedItem = ViewModel.SelectedItem;
+            QueueModernNavStripeUpdate();
         }
     }
 
-    private void OnNavigationPaneOpening(NavigationView sender, object args)
+    private void OnModernNavItemClick(object sender, ItemClickEventArgs e)
     {
-        UpdateNavLabelVisibility(true);
-    }
-
-    private void OnNavigationPaneClosing(NavigationView sender, NavigationViewPaneClosingEventArgs args)
-    {
-        UpdateNavLabelVisibility(false);
-    }
-
-    private void UpdateNavLabelVisibility(bool visible)
-    {
-        var visibility = visible ? Visibility.Visible : Visibility.Collapsed;
-        foreach (var item in ViewModel.NavigationItems)
+        if (e.ClickedItem is ShellNavigationItem item)
         {
-            if (ShellNav.ContainerFromMenuItem(item) is not NavigationViewItem container)
-            {
-                continue;
-            }
-
-            SetNavLabels(container, visibility);
+            ViewModel.SelectedItem = item;
         }
     }
 
-    private static void SetNavLabels(DependencyObject root, Visibility visibility)
-    {
-        var count = VisualTreeHelper.GetChildrenCount(root);
-        for (var i = 0; i < count; i++)
-        {
-            var child = VisualTreeHelper.GetChild(root, i);
-            if (child is TextBlock { Tag: "NavLabel" } label)
-            {
-                label.Visibility = visibility;
-            }
+    private void OnModernNavSelectionChanged(object sender, SelectionChangedEventArgs e)
+        => QueueModernNavStripeUpdate();
 
-            SetNavLabels(child, visibility);
+    private void OnModernNavSizeChanged(object sender, SizeChangedEventArgs e)
+        => QueueModernNavStripeUpdate();
+
+    private void QueueModernNavStripeUpdate()
+    {
+        _ = DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, UpdateModernNavStripe);
+    }
+
+    private void UpdateModernNavStripe()
+    {
+        if (ModernNavList is null || ModernNavStripe is null || ModernNavStripeTransform is null || ModernNavHost is null)
+        {
+            return;
+        }
+
+        var selected = ViewModel.SelectedItem ?? ModernNavList.SelectedItem;
+        var container = selected is null ? null : ModernNavList.ContainerFromItem(selected) as FrameworkElement;
+        SelectionStripeHelper.MoveHorizontal(
+            ModernNavStripe,
+            ModernNavStripeTransform,
+            container,
+            ModernNavHost,
+            animate: _modernNavStripeReady);
+        if (container is not null)
+        {
+            _modernNavStripeReady = true;
         }
     }
 
@@ -207,6 +177,13 @@ public sealed partial class MainPage : Page
         {
             ShellNav.SelectedItem = item;
         }
+
+        if (ModernNavList is not null && !ReferenceEquals(ModernNavList.SelectedItem, item))
+        {
+            ModernNavList.SelectedItem = item;
+        }
+
+        QueueModernNavStripeUpdate();
 
         if (ContentFrame.CurrentSourcePageType != item.PageType)
         {

@@ -15,6 +15,15 @@ xaml-error.txt
 _sps_probe/
 Backup/
 Temp/
+_build/
+build-verify-*/
+build-check-*/
+logs/
+build-out.txt
+build-errors.txt
+build.bat
+slide-transitions-demo.html
+transition-animations-code.txt
 
 ## User data must never be published
 **/catalog.db

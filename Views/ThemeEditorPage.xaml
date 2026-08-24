@@ -30,10 +30,16 @@
             Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
             HorizontalScrollBarVisibility="Disabled"
             HorizontalScrollMode="Disabled"
-            VerticalScrollBarVisibility="Hidden"
+            VerticalScrollBarVisibility="Auto"
             VerticalScrollMode="Enabled"
-            ZoomMode="Disabled">
-            <Grid ColumnSpacing="16" RowSpacing="12" Padding="4,4,12,4">
+            ZoomMode="Disabled"
+            VerticalAlignment="Stretch"
+            HorizontalAlignment="Stretch">
+            <Grid
+                ColumnSpacing="16"
+                RowSpacing="12"
+                Padding="4,4,16,28"
+                HorizontalAlignment="Stretch">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="*" />
@@ -90,6 +96,19 @@
                             BorderBrush="{Binding TextAlignment, Converter={StaticResource TextAlignmentToBorderBrushConverter}, ConverterParameter=Right}"
                             BorderThickness="{Binding TextAlignment, Converter={StaticResource TextAlignmentToBorderThicknessConverter}, ConverterParameter=Right}">
                             <icons:LucideIcon Kind="text-align-end" Size="18" />
+                        </Button>
+                        <Button
+                            Width="40"
+                            Height="40"
+                            Padding="0"
+                            CornerRadius="4"
+                            ToolTipService.ToolTip="По ширине"
+                            Command="{Binding SetTextAlignmentCommand}"
+                            CommandParameter="Justify"
+                            Background="{Binding TextAlignment, Converter={StaticResource TextAlignmentToBrushConverter}, ConverterParameter=Justify}"
+                            BorderBrush="{Binding TextAlignment, Converter={StaticResource TextAlignmentToBorderBrushConverter}, ConverterParameter=Justify}"
+                            BorderThickness="{Binding TextAlignment, Converter={StaticResource TextAlignmentToBorderThicknessConverter}, ConverterParameter=Justify}">
+                            <icons:LucideIcon Kind="text-align-justify" Size="18" />
                         </Button>
                     </StackPanel>
                 </StackPanel>
@@ -228,10 +247,13 @@
 
                         <GridView
                             MinHeight="160"
-                            MaxHeight="440"
+                            MaxHeight="280"
                             ItemsSource="{Binding EditingPoolWallpapers}"
                             SelectedItem="{Binding SelectedWallpaper, Mode=TwoWay}"
-                            SelectionMode="None">
+                            SelectionMode="None"
+                            ScrollViewer.VerticalScrollBarVisibility="Auto"
+                            ScrollViewer.VerticalScrollMode="Enabled"
+                            ScrollViewer.HorizontalScrollMode="Disabled">
                             <GridView.ItemsPanel>
                                 <ItemsPanelTemplate>
                                     <ItemsWrapGrid Orientation="Horizontal" />

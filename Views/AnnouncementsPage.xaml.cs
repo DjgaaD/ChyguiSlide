@@ -1,8 +1,10 @@
 using System;
+using System.ComponentModel;
 using System.Threading.Tasks;
 using ChyguiSlide.Data.Entities;
 using ChyguiSlide.Services;
 using ChyguiSlide.ViewModels;
+using ChyguiSlide.Views.UiAnimation;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -15,16 +17,21 @@ public sealed partial class AnnouncementsPage : Page
     private AnnouncementEditorViewModel? _editorViewModel;
     private ContentDialog? _editorDialog;
     private static bool _initializedOnce;
+    private ListSelectionStripeBinder? _slideStripe;
+    private CatalogLookaheadPreview? _lookaheadPreview;
 
     public AnnouncementsPage()
     {
         InitializeComponent();
         ViewModel = App.AppHost.Services.GetRequiredService<AnnouncementsViewModel>();
         DataContext = ViewModel;
+        ViewModel.PropertyChanged += OnViewModelPropertyChanged;
     }
 
     private async void OnPageLoaded(object sender, RoutedEventArgs e)
     {
+        await ApplyModernLayoutAsync();
+
         // Инициализируем только один раз при первом запуске
         if (!_initializedOnce)
         {
@@ -34,12 +41,16 @@ public sealed partial class AnnouncementsPage : Page
         // Не синхронизируем поиск при загрузке, чтобы избежать мигания при навигации
     }
 
+    protected override void OnNavigatedTo(Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
+    {
+        base.OnNavigatedTo(e);
+        _ = ApplyModernLayoutAsync();
+    }
+
     protected override void OnNavigatedFrom(Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
     {
         base.OnNavigatedFrom(e);
         // Не очищаем поиск при уходе со страницы, чтобы избежать мигания при навигации
-        // SearchBox.Text = string.Empty;
-        // _ = ViewModel.SearchCommand.ExecuteAsync(null);
     }
 
     private async void OnSearchBoxQuerySubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
@@ -436,5 +447,81 @@ public sealed partial class AnnouncementsPage : Page
             await ViewModel.LoadCommand.ExecuteAsync(null);
             ViewModel.SelectAnnouncement(e.Id);
         });
+    }
+
+    private AutoSuggestBox? GetActiveSearchBox() => SearchBoxModern;
+
+    private async Task ApplyModernLayoutAsync()
+    {
+        await ApplyPreviewCanvasAsync();
+        EnsureModernSlideStripe();
+        EnsureLookaheadPreview();
+        _ = RefreshLookaheadPreviewAsync();
+    }
+
+    private void EnsureModernSlideStripe()
+    {
+        if (SlideListModern is null || ModernSlideStripe is null || ModernSlideHost is null)
+        {
+            return;
+        }
+
+        _slideStripe ??= new ListSelectionStripeBinder(
+            SlideListModern,
+            ModernSlideStripe,
+            ModernSlideHost,
+            () => ViewModel.SelectedSlidePreview,
+            DispatcherQueue);
+        _slideStripe.Attach();
+        _slideStripe.RequestUpdate(animate: false);
+    }
+
+    private void EnsureLookaheadPreview()
+    {
+        if (AnnouncementWebPreview is null || AnnouncementPreviewIdleHint is null)
+        {
+            return;
+        }
+
+        _lookaheadPreview ??= new CatalogLookaheadPreview(AnnouncementWebPreview, AnnouncementPreviewIdleHint);
+    }
+
+    private async Task ApplyPreviewCanvasAsync()
+    {
+        var (width, height) = await ProjectionOutputSize.GetAsync();
+        if (AnnouncementPreviewCanvas is not null)
+        {
+            ProjectionOutputSize.ApplyCanvas(AnnouncementPreviewCanvas, width, height);
+        }
+
+        AnnouncementWebPreview?.ApplyOutputSize(width, height);
+    }
+
+    private async Task RefreshLookaheadPreviewAsync()
+    {
+        if (_lookaheadPreview is null)
+        {
+            return;
+        }
+
+        await _lookaheadPreview.ShowContentAsync(
+            ViewModel.SelectedAnnouncement?.Title,
+            ViewModel.SelectedSlidePreview?.Content);
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(AnnouncementsViewModel.SelectedAnnouncement))
+        {
+            _slideStripe?.ResetReady();
+            _ = RefreshLookaheadPreviewAsync();
+            return;
+        }
+
+        if (e.PropertyName == nameof(AnnouncementsViewModel.SelectedSlidePreview))
+        {
+            _slideStripe?.RequestUpdate(animate: true);
+            _ = RefreshLookaheadPreviewAsync();
+        }
     }
 }

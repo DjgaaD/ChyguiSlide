@@ -17,7 +17,6 @@ namespace ChyguiSlide.ViewModels;
 public partial class BibleViewModel : ObservableObject
 {
     private readonly IBibleService _bibleService;
-    private readonly IDisplaySettingsService _displaySettings;
     private readonly IServiceProvider _services;
     private readonly List<BibleBook> _allBooks = new();
     private bool _suppressAutoChapterSelect;
@@ -26,14 +25,14 @@ public partial class BibleViewModel : ObservableObject
 
     public BibleViewModel(
         IBibleService bibleService,
-        IDisplaySettingsService displaySettings,
         IServiceProvider services)
     {
         _bibleService = bibleService;
-        _displaySettings = displaySettings;
         _services = services;
 
         Books = new ObservableCollection<BibleBook>();
+        OldTestamentBooks = new ObservableCollection<BibleBook>();
+        NewTestamentBooks = new ObservableCollection<BibleBook>();
         Chapters = new ObservableCollection<int>();
         Verses = new ObservableCollection<BibleVerseItem>();
         SearchResults = new ObservableCollection<BibleVerseItem>();
@@ -51,6 +50,8 @@ public partial class BibleViewModel : ObservableObject
     }
 
     public ObservableCollection<BibleBook> Books { get; }
+    public ObservableCollection<BibleBook> OldTestamentBooks { get; }
+    public ObservableCollection<BibleBook> NewTestamentBooks { get; }
     public ObservableCollection<int> Chapters { get; }
     public ObservableCollection<BibleVerseItem> Verses { get; }
     public ObservableCollection<BibleVerseItem> SearchResults { get; }
@@ -83,12 +84,6 @@ public partial class BibleViewModel : ObservableObject
     [ObservableProperty]
     private BibleVerseItem? selectedVerse;
 
-    [ObservableProperty]
-    private BiblePickerLayoutMode pickerLayout = BiblePickerLayoutMode.Lists;
-
-    public bool IsListPickerLayout => PickerLayout == BiblePickerLayoutMode.Lists;
-    public bool IsGridPickerLayout => PickerLayout == BiblePickerLayoutMode.Grid;
-
     public IAsyncRelayCommand StartProjectionCommand { get; }
     public IAsyncRelayCommand<BibleVerseItem?> ProjectFromVerseCommand { get; }
 
@@ -115,10 +110,13 @@ public partial class BibleViewModel : ObservableObject
         }
     }
 
+    public string SelectedBookTitle => SelectedBook?.RussianName ?? "Выберите книгу";
+
+    public string SelectedChapterTitle =>
+        SelectedChapter is int chapter ? $"Глава {chapter}" : string.Empty;
+
     public async Task InitializeAsync()
     {
-        await RefreshPickerLayoutAsync();
-
         if (Books.Count > 0)
         {
             return;
@@ -145,25 +143,6 @@ public partial class BibleViewModel : ObservableObject
         {
             IsBusy = false;
         }
-    }
-
-    public async Task RefreshPickerLayoutAsync()
-    {
-        try
-        {
-            PickerLayout = await _displaySettings.GetBiblePickerLayoutAsync();
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"RefreshPickerLayoutAsync: {ex.Message}");
-            PickerLayout = BiblePickerLayoutMode.Lists;
-        }
-    }
-
-    partial void OnPickerLayoutChanged(BiblePickerLayoutMode value)
-    {
-        OnPropertyChanged(nameof(IsListPickerLayout));
-        OnPropertyChanged(nameof(IsGridPickerLayout));
     }
 
     partial void OnSelectedTestamentFilterChanged(BibleTestamentFilterItem? value)
@@ -196,6 +175,8 @@ public partial class BibleViewModel : ObservableObject
             Books.Add(book);
         }
 
+        RebuildBookGroups();
+
         if (previousId is not null)
         {
             var stillVisible = Books.FirstOrDefault(b =>
@@ -218,6 +199,21 @@ public partial class BibleViewModel : ObservableObject
             _ => true
         };
 
+    private void RebuildBookGroups()
+    {
+        OldTestamentBooks.Clear();
+        NewTestamentBooks.Clear();
+        foreach (var book in _allBooks.Where(b => !b.IsNewTestament).OrderBy(b => b.Order))
+        {
+            OldTestamentBooks.Add(book);
+        }
+
+        foreach (var book in _allBooks.Where(b => b.IsNewTestament).OrderBy(b => b.Order))
+        {
+            NewTestamentBooks.Add(book);
+        }
+    }
+
     partial void OnSelectedBookChanged(BibleBook? value)
     {
         Chapters.Clear();
@@ -225,6 +221,8 @@ public partial class BibleViewModel : ObservableObject
         SelectedChapter = null;
         SelectedVerse = null;
         OnPropertyChanged(nameof(SelectionSummary));
+        OnPropertyChanged(nameof(SelectedBookTitle));
+        OnPropertyChanged(nameof(SelectedChapterTitle));
         StartProjectionCommand.NotifyCanExecuteChanged();
 
         if (value is null)
@@ -249,6 +247,7 @@ public partial class BibleViewModel : ObservableObject
         Verses.Clear();
         SelectedVerse = null;
         OnPropertyChanged(nameof(SelectionSummary));
+        OnPropertyChanged(nameof(SelectedChapterTitle));
         StartProjectionCommand.NotifyCanExecuteChanged();
 
         if (SelectedBook is null || value is null or 0)

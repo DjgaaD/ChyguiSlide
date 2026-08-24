@@ -26,10 +26,15 @@ public sealed class WebProjectionAdapter : IDisposable
     private bool _pageReady;
     private bool _slideDebounceQueued;
 
-    public WebProjectionAdapter(CoreWebView2 webView, ProjectionDisplayViewModel viewModel)
+    private readonly bool _previewFit;
+    private bool _instantSlides;
+
+    public WebProjectionAdapter(CoreWebView2 webView, ProjectionDisplayViewModel viewModel, bool previewFit = false, bool instantSlides = false)
     {
         _webView = webView ?? throw new ArgumentNullException(nameof(webView));
         _viewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
+        _previewFit = previewFit;
+        _instantSlides = instantSlides;
         _dispatcher = DispatcherQueue.GetForCurrentThread()
             ?? App.MainDispatcherQueue
             ?? throw new InvalidOperationException("DispatcherQueue недоступен для WebProjectionAdapter.");
@@ -103,6 +108,13 @@ public sealed class WebProjectionAdapter : IDisposable
 
         switch (e.PropertyName)
         {
+            case nameof(ProjectionDisplayViewModel.ProjectionMarginLeft):
+            case nameof(ProjectionDisplayViewModel.ProjectionMarginRight):
+            case nameof(ProjectionDisplayViewModel.ProjectionMarginTop):
+            case nameof(ProjectionDisplayViewModel.ProjectionMarginBottom):
+                SendProjectionMargins();
+                QueueSlideUpdate();
+                break;
             case nameof(ProjectionDisplayViewModel.ReferenceCaption):
                 QueueSlideUpdate();
                 break;
@@ -164,9 +176,36 @@ public sealed class WebProjectionAdapter : IDisposable
     {
         SendBackgroundUpdate();
         SendThemeUpdate();
+        SendProjectionMargins();
         SendTransitionStyle();
         SendTransitionDuration();
+        if (_previewFit)
+        {
+            SendMessage(new { type = "setPreviewFit", enabled = true });
+        }
+
         SendSlideUpdate();
+    }
+
+    public void PushFullState() => SendInitialState();
+
+    public void RefreshPreviewFit()
+    {
+        if (_previewFit)
+        {
+            SendMessage(new { type = "setPreviewFit", enabled = true });
+        }
+    }
+
+    public void SetInstantSlides(bool enabled)
+    {
+        if (_instantSlides == enabled)
+        {
+            return;
+        }
+
+        _instantSlides = enabled;
+        SendTransitionStyle();
     }
 
     private void SendSlideUpdate()
@@ -201,7 +240,7 @@ public sealed class WebProjectionAdapter : IDisposable
         SendMessage(new
         {
             type = "setTransitionStyle",
-            style = _viewModel.TransitionStyle.ToString()
+            style = _instantSlides ? "None" : _viewModel.TransitionStyle.ToString()
         });
     }
 
@@ -293,6 +332,18 @@ public sealed class WebProjectionAdapter : IDisposable
         }
 
         return null;
+    }
+
+    private void SendProjectionMargins()
+    {
+        SendMessage(new
+        {
+            type = "setProjectionMargins",
+            marginLeft = _viewModel.ProjectionMarginLeft,
+            marginRight = _viewModel.ProjectionMarginRight,
+            marginTop = _viewModel.ProjectionMarginTop,
+            marginBottom = _viewModel.ProjectionMarginBottom
+        });
     }
 
     private void SendThemeUpdate()

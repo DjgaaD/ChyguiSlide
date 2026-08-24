@@ -9,261 +9,373 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:viewModels="using:ChyguiSlide.ViewModels"
     xmlns:icons="using:ChyguiSlide.Controls"
+    xmlns:anim="using:ChyguiSlide.Views.UiAnimation"
     Loaded="OnPageLoaded"
+    NavigationCacheMode="Required"
     mc:Ignorable="d">
 
-    <Grid Margin="24,16,24,16" RowSpacing="12" ColumnSpacing="12">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="*" />
-        </Grid.RowDefinitions>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="420" />
-            <ColumnDefinition Width="*" />
-        </Grid.ColumnDefinitions>
+    <Page.Resources>
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
+        <converters:NullToBooleanConverter x:Key="NullToBooleanConverter" />
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+        <converters:BoolNegationConverter x:Key="BoolNegationConverter" />
 
-        <Grid.Resources>
-            <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
-            <converters:NullToBooleanConverter x:Key="NullToBooleanConverter" />
-            <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
-            <converters:BoolNegationConverter x:Key="BoolNegationConverter" />
-        </Grid.Resources>
+        <Style x:Key="ModernSelectableListViewItemStyle" TargetType="ListViewItem">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListViewItem">
+                        <Grid x:Name="Root" Background="Transparent">
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal" />
+                                    <VisualState x:Name="PointerOver">
+                                        <VisualState.Setters>
+                                            <Setter Target="Root.Background" Value="{ThemeResource ModernItemHoverBackgroundBrush}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <VisualState.Setters>
+                                            <Setter Target="Root.Background" Value="{ThemeResource ModernItemHoverBackgroundBrush}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Selected">
+                                        <VisualState.Setters>
+                                            <Setter Target="Root.Background" Value="{ThemeResource ModernItemSelectedBackgroundBrush}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="SelectedPointerOver">
+                                        <VisualState.Setters>
+                                            <Setter Target="Root.Background" Value="{ThemeResource ModernItemSelectedBackgroundBrush}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="SelectedPressed">
+                                        <VisualState.Setters>
+                                            <Setter Target="Root.Background" Value="{ThemeResource ModernItemSelectedBackgroundBrush}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="PointerOverSelected">
+                                        <VisualState.Setters>
+                                            <Setter Target="Root.Background" Value="{ThemeResource ModernItemSelectedBackgroundBrush}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="PressedSelected">
+                                        <VisualState.Setters>
+                                            <Setter Target="Root.Background" Value="{ThemeResource ModernItemSelectedBackgroundBrush}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                            <ContentPresenter
+                                HorizontalAlignment="Stretch"
+                                VerticalAlignment="Stretch"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}" />
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Page.Resources>
 
-        <!-- Верхняя панель на всю ширину: заголовок, поиск, сборник, действия -->
-        <Border
-            Grid.Row="0"
-            Grid.Column="0"
-            Grid.ColumnSpan="2"
-            Background="{ThemeResource LayerFillColorDefaultBrush}"
-            CornerRadius="12"
-            Padding="16">
-            <StackPanel Spacing="12">
-                <Grid ColumnSpacing="12">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="2*" />
-                        <ColumnDefinition Width="*" MinWidth="200" />
-                    </Grid.ColumnDefinitions>
+    <Grid Background="{ThemeResource ModernPageBackgroundBrush}">
+        <Grid x:Name="ModernRoot" Padding="0" Background="{ThemeResource ModernPageBackgroundBrush}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="17*" />
+                <ColumnDefinition Width="46*" />
+                <ColumnDefinition Width="37*" />
+            </Grid.ColumnDefinitions>
 
-                    <AutoSuggestBox
-                        x:Name="SearchBox"
-                        Grid.Column="0"
-                        VerticalAlignment="Center"
-                        PlaceholderText="Поиск по названию или тексту…"
-                        QuerySubmitted="OnSearchBoxQuerySubmitted"
-                        TextChanged="OnSearchBoxTextChanged" />
-
-                    <ComboBox
-                        Grid.Column="1"
-                        VerticalAlignment="Center"
-                        HorizontalAlignment="Stretch"
-                        PlaceholderText="Сборник"
-                        ItemsSource="{Binding CollectionFilters}"
-                        SelectedItem="{Binding SelectedCollectionFilter, Mode=TwoWay}"
-                        DisplayMemberPath="Title" />
-                </Grid>
-
-                <!-- Все действия в одну строку -->
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Button>
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <icons:LucideIcon Kind="arrow-up-down" Size="16" />
-                            <TextBlock Text="Сортировка" VerticalAlignment="Center" />
-                        </StackPanel>
-                        <Button.Flyout>
-                            <MenuFlyout>
-                                <MenuFlyoutItem Text="По названию" Click="OnSortByTitleClicked" />
-                                <MenuFlyoutItem Text="По номеру" Click="OnSortByNumberClicked" />
-                            </MenuFlyout>
-                        </Button.Flyout>
-                    </Button>
-
-                    <!-- Не в плейлисте -->
-                    <Button
-                        Click="OnAddToQuickPlaylistClicked"
-                        Command="{Binding AddToQuickPlaylistCommand}"
-                        Visibility="{Binding ShowAddToQuickPlaylistButton, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <icons:LucideIcon Kind="list" Size="16" />
-                            <TextBlock Text="В плейлист" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </Button>
-                    <!-- Уже добавлена -->
-                    <Button
-                        IsEnabled="False"
-                        Style="{StaticResource AccentButtonStyle}"
-                        Visibility="{Binding ShowInQuickPlaylistBadge, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <icons:LucideIcon Kind="check" Size="16" />
-                            <TextBlock Text="В плейлисте" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </Button>
-
-                    <DropDownButton>
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <icons:LucideIcon Kind="plus" Size="16" />
-                            <TextBlock Text="Добавить песню" VerticalAlignment="Center" />
-                        </StackPanel>
-                        <DropDownButton.Flyout>
-                            <MenuFlyout>
-                                <MenuFlyoutItem Text="Набрать вручную" Click="OnCreateSongClicked" />
-                                <MenuFlyoutItem Text="Импорт презентации" Click="OnImportSongClicked" />
-                                <MenuFlyoutItem Text="Импорт с сайта" Click="OnImportFromUrlClicked" />
-                            </MenuFlyout>
-                        </DropDownButton.Flyout>
-                    </DropDownButton>
-
-                    <DropDownButton
-                        Visibility="{Binding IsAllSongsFilter, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <icons:LucideIcon Kind="folder" Size="16" />
-                            <TextBlock Text="Создать сборник" VerticalAlignment="Center" />
-                        </StackPanel>
-                        <DropDownButton.Flyout>
-                            <MenuFlyout>
-                                <MenuFlyoutItem Text="Создать вручную" Click="OnCreateCollectionClicked" />
-                                <MenuFlyoutItem Text="Импорт SPS" Click="OnImportSpsClicked" />
-                            </MenuFlyout>
-                        </DropDownButton.Flyout>
-                    </DropDownButton>
-
-                    <Button
-                        Click="OnEditSongClicked"
-                        IsEnabled="{Binding HasSelectedSong}"
-                        Visibility="{Binding HasSelectedSong, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <icons:LucideIcon Kind="pencil" Size="16" />
-                            <TextBlock Text="Изменить" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </Button>
-                    <Button
-                        Click="OnDeleteSongClicked"
-                        IsEnabled="{Binding HasSelectedSong}"
-                        Visibility="{Binding HasSelectedSong, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <icons:LucideIcon Kind="trash-2" Size="16" />
-                            <TextBlock Text="Удалить песню" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </Button>
-
-                    <Button
-                        Click="OnDeleteCollectionClicked"
-                        Visibility="{Binding IsSpecificCollectionSelected, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <icons:LucideIcon Kind="trash-2" Size="16" />
-                            <TextBlock Text="Удалить сборник" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </Button>
-                    <Button
-                        Click="OnExpandChorusInCollectionClicked"
-                        Visibility="{Binding IsSpecificCollectionSelected, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <StackPanel Orientation="Horizontal" Spacing="6">
-                            <icons:LucideIcon Kind="form" Size="16" />
-                            <TextBlock Text="Припев после куплетов" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </Button>
-
-                    <ProgressRing
-                        Width="24"
-                        Height="24"
-                        VerticalAlignment="Center"
-                        IsActive="{Binding IsBusy}" />
-                </StackPanel>
-            </StackPanel>
-        </Border>
-
-        <!-- Список песен -->
-        <Border
-            Grid.Row="1"
-            Grid.Column="0"
-            Background="{ThemeResource LayerFillColorDefaultBrush}"
-            CornerRadius="12">
-            <ListView
-                x:Name="SongListView"
-                Margin="8"
-                ItemsSource="{Binding Songs}"
-                SelectionMode="Single"
-                SelectedItem="{Binding SelectedSong, Mode=TwoWay}"
-                ScrollViewer.VerticalScrollBarVisibility="Auto"
-                ScrollViewer.VerticalScrollMode="Enabled">
-                <ListView.ItemContainerStyle>
-                    <Style TargetType="ListViewItem">
-                        <Setter Property="Padding" Value="8,4" />
-                        <Setter Property="MinHeight" Value="0" />
-                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-                        <Setter Property="BorderThickness" Value="0,0,0,1" />
-                        <Setter Property="BorderBrush" Value="{ThemeResource StrokeColorDefaultBrush}" />
-                    </Style>
-                </ListView.ItemContainerStyle>
-                <ListView.ItemTemplate>
-                    <DataTemplate>
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <StackPanel
-                                Orientation="Horizontal"
-                                Spacing="4"
-                                Visibility="{Binding Number, Converter={StaticResource NullToVisibilityConverter}}">
-                                <TextBlock
-                                    FontSize="14"
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    Text="№" />
-                                <TextBlock
-                                    FontSize="14"
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    Text="{Binding Number}"
-                                    TextTrimming="CharacterEllipsis" />
-                            </StackPanel>
-                            <TextBlock
-                                FontSize="16"
-                                FontWeight="SemiBold"
-                                Text="{Binding Title}"
-                                TextTrimming="CharacterEllipsis" />
-                        </StackPanel>
-                    </DataTemplate>
-                </ListView.ItemTemplate>
-            </ListView>
-        </Border>
-
-        <!-- Детали песни -->
-        <Border
-            Grid.Row="1"
-            Grid.Column="1"
-            Background="{ThemeResource LayerFillColorDefaultBrush}"
-            CornerRadius="12">
-            <Grid Margin="16">
-                <TextBlock
-                    Margin="0,8"
-                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                    Text="Выберите песню, чтобы увидеть детали."
-                    Visibility="{Binding SelectedSong, Converter={StaticResource NullToVisibilityConverter}, ConverterParameter=Invert}" />
-
-                <Grid Visibility="{Binding SelectedSong, Converter={StaticResource NullToVisibilityConverter}}">
+            <Border Grid.Column="0" Background="{ThemeResource ModernSurfaceBrush}" Padding="0,16,0,0">
+                <Grid>
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
-                    <StackPanel
-                        Orientation="Horizontal"
-                        Spacing="12"
-                        VerticalAlignment="Center"
-                        Margin="0,0,0,12">
+                    <Grid Margin="16,0,12,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
                         <TextBlock
-                            Style="{StaticResource SubtitleTextBlockStyle}"
-                            Text="{Binding SelectedSong.Title}" />
-                        <Button
-                            Content="Показать на экране"
-                            HorizontalAlignment="Left"
-                            Command="{Binding StartProjectionCommand}" />
+                            FontSize="12"
+                            FontWeight="SemiBold"
+                            CharacterSpacing="40"
+                            Foreground="{ThemeResource ModernMutedBrush}"
+                            VerticalAlignment="Center"
+                            Text="ПЕСНИ" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                            <Button
+                                Width="32"
+                                Height="32"
+                                Padding="4"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                ToolTipService.ToolTip="Сортировка">
+                                <icons:LucideIcon Kind="arrow-up-down" Size="16" />
+                                <Button.Flyout>
+                                    <MenuFlyout>
+                                        <MenuFlyoutItem Text="По названию" Click="OnSortByTitleClicked" />
+                                        <MenuFlyoutItem Text="По номеру" Click="OnSortByNumberClicked" />
+                                    </MenuFlyout>
+                                </Button.Flyout>
+                            </Button>
+                            <ProgressRing
+                                Width="20"
+                                Height="20"
+                                VerticalAlignment="Center"
+                                IsActive="{Binding IsBusy}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <StackPanel Grid.Row="1" Margin="16,0,16,10" Spacing="8">
+                        <AutoSuggestBox
+                            x:Name="SearchBoxModern"
+                            PlaceholderText="Поиск…"
+                            QuerySubmitted="OnSearchBoxQuerySubmitted"
+                            TextChanged="OnSearchBoxTextChanged" />
+                        <ComboBox
+                            HorizontalAlignment="Stretch"
+                            PlaceholderText="Сборник"
+                            ItemsSource="{Binding CollectionFilters}"
+                            SelectedItem="{Binding SelectedCollectionFilter, Mode=TwoWay}"
+                            DisplayMemberPath="Title" />
                     </StackPanel>
 
+                    <Grid Grid.Row="2" Margin="8,0,8,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <DropDownButton
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Left"
+                            Padding="4,6"
+                            Background="Transparent"
+                            BorderThickness="0">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <icons:LucideIcon Kind="plus" Size="16" />
+                                <TextBlock FontSize="13" VerticalAlignment="Center" Text="Песня" />
+                            </StackPanel>
+                            <DropDownButton.Flyout>
+                                <MenuFlyout>
+                                    <MenuFlyoutItem Text="Набрать вручную" Click="OnCreateSongClicked" />
+                                    <MenuFlyoutItem Text="Импорт презентации" Click="OnImportSongClicked" />
+                                    <MenuFlyoutItem Text="Импорт с сайта" Click="OnImportFromUrlClicked" />
+                                    <MenuFlyoutSeparator Visibility="{Binding HasSelectedSong, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                    <MenuFlyoutItem
+                                        Text="Изменить"
+                                        Click="OnEditSongClicked"
+                                        IsEnabled="{Binding HasSelectedSong}"
+                                        Visibility="{Binding HasSelectedSong, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                    <MenuFlyoutItem
+                                        Text="Удалить песню"
+                                        Click="OnDeleteSongClicked"
+                                        IsEnabled="{Binding HasSelectedSong}"
+                                        Visibility="{Binding HasSelectedSong, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                </MenuFlyout>
+                            </DropDownButton.Flyout>
+                        </DropDownButton>
+                        <DropDownButton
+                            Grid.Column="1"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Left"
+                            Padding="4,6"
+                            Background="Transparent"
+                            BorderThickness="0">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <icons:LucideIcon Kind="folder" Size="16" />
+                                <TextBlock FontSize="13" VerticalAlignment="Center" Text="Сборник" />
+                            </StackPanel>
+                            <DropDownButton.Flyout>
+                                <MenuFlyout>
+                                    <MenuFlyoutItem Text="Создать вручную" Click="OnCreateCollectionClicked" />
+                                    <MenuFlyoutItem Text="Импорт SPS" Click="OnImportSpsClicked" />
+                                    <MenuFlyoutSeparator Visibility="{Binding IsSpecificCollectionSelected, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                    <MenuFlyoutItem
+                                        Text="Припев после куплетов"
+                                        Click="OnExpandChorusInCollectionClicked"
+                                        Visibility="{Binding IsSpecificCollectionSelected, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                    <MenuFlyoutItem
+                                        Text="Удалить сборник"
+                                        Click="OnDeleteCollectionClicked"
+                                        Visibility="{Binding IsSpecificCollectionSelected, Converter={StaticResource BoolToVisibilityConverter}}" />
+                                </MenuFlyout>
+                            </DropDownButton.Flyout>
+                        </DropDownButton>
+                        <Button
+                            Grid.Column="2"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Left"
+                            Padding="4,6"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Click="OnAddToQuickPlaylistClicked"
+                            Command="{Binding AddToQuickPlaylistCommand}"
+                            Visibility="{Binding ShowAddToQuickPlaylistButton, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <icons:LucideIcon Kind="list" Size="16" />
+                                <TextBlock FontSize="13" VerticalAlignment="Center" TextWrapping="NoWrap" Text="В плейлист" />
+                            </StackPanel>
+                        </Button>
+                        <Button
+                            Grid.Column="2"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Left"
+                            Padding="4,6"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            IsEnabled="False"
+                            Visibility="{Binding ShowInQuickPlaylistBadge, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <icons:LucideIcon Kind="check" Size="16" />
+                                <TextBlock FontSize="13" VerticalAlignment="Center" TextWrapping="NoWrap" Text="В плейлисте" />
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+
                     <ListView
-                        Grid.Row="1"
-                        ItemsSource="{Binding SectionsPreview}"
-                        SelectedItem="{Binding SelectedSectionPreview, Mode=TwoWay}"
+                        x:Name="SongListViewModern"
+                        Grid.Row="3"
+                        ItemsSource="{Binding Songs}"
                         SelectionMode="Single"
-                        ItemContainerStyle="{StaticResource SelectableCardListViewItemStyle}"
-                        ItemTemplate="{StaticResource SelectableCardSelectedTemplate}" />
+                        SelectedItem="{Binding SelectedSong, Mode=TwoWay}"
+                        ItemContainerStyle="{StaticResource ModernSelectableListViewItemStyle}"
+                        ScrollViewer.VerticalScrollBarVisibility="Auto"
+                        ScrollViewer.VerticalScrollMode="Enabled">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Padding="16,10,16,10" ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock
+                                        FontSize="13"
+                                        VerticalAlignment="Center"
+                                        Foreground="{ThemeResource ModernMutedBrush}"
+                                        Visibility="{Binding Number, Converter={StaticResource NullToVisibilityConverter}}"
+                                        Text="{Binding Number}" />
+                                    <TextBlock
+                                        Grid.Column="1"
+                                        FontSize="15"
+                                        VerticalAlignment="Center"
+                                        Text="{Binding Title}"
+                                        TextTrimming="CharacterEllipsis" />
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
                 </Grid>
-            </Grid>
-        </Border>
+            </Border>
+
+            <Border Grid.Column="1" Background="{ThemeResource ModernSlideColumnBackgroundBrush}" Padding="28,22,24,16">
+                <Grid>
+                    <TextBlock
+                        Margin="0,8"
+                        FontSize="16"
+                        Foreground="{ThemeResource ModernMutedBrush}"
+                        Text="Выберите песню, чтобы увидеть слайды."
+                        Visibility="{Binding SelectedSong, Converter={StaticResource NullToVisibilityConverter}, ConverterParameter=Invert}" />
+                    <Grid Visibility="{Binding SelectedSong, Converter={StaticResource NullToVisibilityConverter}}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <StackPanel Margin="0,0,0,18" Spacing="6">
+                            <TextBlock
+                                FontSize="36"
+                                FontWeight="SemiBold"
+                                TextWrapping="Wrap"
+                                Text="{Binding SelectedSong.Title}" />
+                            <TextBlock
+                                FontSize="16"
+                                Foreground="{ThemeResource ModernMutedBrush}"
+                                Text="Слайды" />
+                        </StackPanel>
+                        <Grid x:Name="ModernSectionHost" Grid.Row="1">
+                            <ListView
+                                x:Name="SectionListModern"
+                                anim:ItemListAppearance.UseCrossfade="True"
+                                ItemsSource="{Binding SectionsPreview}"
+                                SelectedItem="{Binding SelectedSectionPreview, Mode=TwoWay}"
+                                SelectionMode="Single"
+                                ItemContainerStyle="{StaticResource ModernSelectableListViewItemStyle}">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Padding="22,16,20,16" Spacing="8">
+                                            <TextBlock
+                                                FontSize="13"
+                                                Foreground="{ThemeResource ModernMutedBrush}"
+                                                Text="{Binding Title}" />
+                                            <TextBlock
+                                                FontSize="22"
+                                                FontWeight="SemiBold"
+                                                LineHeight="30"
+                                                TextWrapping="Wrap"
+                                                Text="{Binding Content}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                            <Rectangle
+                                x:Name="ModernSectionStripe"
+                                Width="3"
+                                Height="40"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Top"
+                                Fill="{ThemeResource ModernAccentBrush}"
+                                IsHitTestVisible="False"
+                                Opacity="0" />
+                        </Grid>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="2" Background="{ThemeResource ModernSurfaceBrush}" Padding="20,18,20,16">
+                <StackPanel>
+                    <TextBlock
+                        Margin="0,0,0,12"
+                        FontSize="15"
+                        FontWeight="SemiBold"
+                        Text="Предпросмотр экрана" />
+                    <Viewbox Stretch="Uniform" HorizontalAlignment="Stretch">
+                        <Grid x:Name="CatalogPreviewCanvas" Width="1920" Height="1080" Background="Black">
+                            <icons:WebProjectionPreview x:Name="CatalogWebPreview" />
+                            <TextBlock
+                                x:Name="CatalogPreviewIdleHint"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                FontSize="48"
+                                Foreground="{ThemeResource ModernPreviewIdleForegroundBrush}"
+                                Text="Выберите слайд"
+                                Visibility="Collapsed" />
+                        </Grid>
+                    </Viewbox>
+                    <Button
+                        Margin="0,16,0,0"
+                        Height="48"
+                        HorizontalAlignment="Stretch"
+                        FontSize="16"
+                        FontWeight="SemiBold"
+                        Content="Показать на экране"
+                        Command="{Binding StartProjectionCommand}"
+                        Background="{ThemeResource ModernAccentBrush}"
+                        Foreground="White"
+                        BorderBrush="{ThemeResource ModernAccentBrush}"
+                        CornerRadius="0"
+                        IsEnabled="{Binding HasSelectedSong}" />
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </Page>

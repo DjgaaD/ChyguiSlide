@@ -300,6 +300,63 @@ public sealed partial class ThemePresetEditorViewModel
         }
     }
 
+    /// <summary>Выбор папки с копией и восстановление самой новой .db (подтверждение — в SettingsPage).</summary>
+    public async Task<string?> PickLocalBackupFileFromFolderAsync()
+    {
+        var picker = new global::Windows.Storage.Pickers.FolderPicker
+        {
+            SuggestedStartLocation = global::Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary
+        };
+        picker.FileTypeFilter.Add("*");
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, App.MainWindowHandle);
+
+        var folder = await picker.PickSingleFolderAsync();
+        if (folder is null)
+        {
+            BackupStatusMessage = "Восстановление отменено.";
+            return null;
+        }
+
+        var dbFiles = Directory
+            .EnumerateFiles(folder.Path)
+            .Where(path =>
+                path.EndsWith(".db", StringComparison.OrdinalIgnoreCase)
+                || path.EndsWith(".sqlite", StringComparison.OrdinalIgnoreCase))
+            .Select(path => new FileInfo(path))
+            .OrderByDescending(info => info.LastWriteTimeUtc)
+            .ToList();
+
+        if (dbFiles.Count == 0)
+        {
+            BackupStatusMessage = "В выбранной папке нет файлов .db или .sqlite.";
+            return null;
+        }
+
+        return dbFiles[0].FullName;
+    }
+
+    public async Task RestoreCatalogLocalFileAsync(string sourceDbPath)
+    {
+        IsBackupBusy = true;
+        BackupStatusMessage = "Восстановление…";
+        try
+        {
+            var progress = new Progress<string>(msg => BackupStatusMessage = msg);
+            await _catalogBackupService.RestoreFromLocalFileAsync(sourceDbPath, progress);
+            BackupStatusMessage =
+                "База восстановлена. Закройте и снова откройте Чугуй Слайды, чтобы изменения применились.";
+        }
+        catch (Exception ex)
+        {
+            BackupStatusMessage = null;
+            await ErrorDialog.ShowAsync("Ошибка восстановления", FormatBackupError("Ошибка восстановления", ex));
+        }
+        finally
+        {
+            IsBackupBusy = false;
+        }
+    }
+
     private async Task RefreshYandexBackupsAsync()
     {
         IsBackupBusy = true;

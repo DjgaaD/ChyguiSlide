@@ -4,11 +4,12 @@ using ChyguiSlide.Data.Entities;
 using ChyguiSlide.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Dispatching;
-using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 
 using ChyguiSlide.Services;
 using ChyguiSlide.Services.Abstractions;
+using ChyguiSlide.Views.UiAnimation;
 
 namespace ChyguiSlide.Views;
 
@@ -17,7 +18,7 @@ public sealed partial class LiveControlPage : Page
     public LiveControlViewModel ViewModel { get; }
 
     private IProjectionDisplayService? _projectionDisplayService;
-    private static bool _projectionMirrorInitialized;
+    private ListSelectionStripeBinder? _sectionStripe;
 
     public LiveControlPage()
     {
@@ -31,23 +32,27 @@ public sealed partial class LiveControlPage : Page
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
+        await ApplyModernLayoutAsync();
+
         // NavigationCacheMode=Required: страница переживает уход с раздела.
         // Не дергаем RefreshQueue при каждом появлении — ListView иначе заново
         // выставляет SelectedItem → ShowSongSections → пересборка слайда → мерцание видеофона.
         await ViewModel.InitializeAsync();
         ScrollCurrentSectionIntoView();
 
-        // Инициализация зеркалирования экрана проекции только один раз
-        if (!_projectionMirrorInitialized)
-        {
-            _projectionMirrorInitialized = true;
-            InitializeProjectionMirror();
-        }
+        InitializeProjectionMirror();
     }
 
     protected override void OnNavigatedTo(Microsoft.UI.Xaml.Navigation.NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
+        _ = ApplyLayoutAndScrollAsync();
+    }
+
+    private async Task ApplyLayoutAndScrollAsync()
+    {
+        await ApplyModernLayoutAsync();
+        InitializeProjectionMirror();
         ScrollCurrentSectionIntoView();
     }
 
@@ -59,6 +64,11 @@ public sealed partial class LiveControlPage : Page
         {
             ScrollCurrentSectionIntoView();
         }
+
+        if (e.PropertyName == nameof(LiveControlViewModel.SelectedSection))
+        {
+            _sectionStripe?.RequestUpdate(animate: true);
+        }
     }
 
     private void OnQuickPlaylistDragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args)
@@ -66,15 +76,26 @@ public sealed partial class LiveControlPage : Page
         ViewModel.SyncQuickPlaylistOrderFromUi();
     }
 
-    private void ScrollCurrentSectionIntoView()
+    private void OnRemoveQuickEntryClick(object sender, RoutedEventArgs e)
     {
-        var section = ViewModel.SelectedSection;
-        if (section is null || SectionList is null)
+        if (sender is not Button { Tag: PlaylistEntry entry })
         {
             return;
         }
 
-        SectionList.DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+        ViewModel.RemoveQuickEntry(entry);
+    }
+
+    private void ScrollCurrentSectionIntoView()
+    {
+        var section = ViewModel.SelectedSection;
+        var sectionList = GetActiveSectionList();
+        if (section is null || sectionList is null)
+        {
+            return;
+        }
+
+        sectionList.DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
         {
             var current = ViewModel.SelectedSection;
             if (current is null)
@@ -82,7 +103,7 @@ public sealed partial class LiveControlPage : Page
                 return;
             }
 
-            SectionList.ScrollIntoView(current, ScrollIntoViewAlignment.Default);
+            _sectionStripe?.ScrollSelectedIntoViewIfNeeded();
         });
     }
 
@@ -235,31 +256,86 @@ public sealed partial class LiveControlPage : Page
         }
 
         // Используем существующий механизм сервиса для привязки превью
-        // Сервис автоматически управляет перемещением ProjectionStageView между окном и превью
-        ChyguiSlide.Data.InteractionLogger.Log($"InitializeProjectionMirror: PreviewStageHost is {(PreviewStageHost is null ? "null" : "present")}");
-        _projectionDisplayService.BindProgramPreviewHost(PreviewStageHost);
+        // Сервис показывает тот же HTML/CSS, что и окно проектора.
+        var previewHost = GetActivePreviewStageHost();
+        ChyguiSlide.Data.InteractionLogger.Log($"InitializeProjectionMirror: PreviewStageHost is {(previewHost is null ? "null" : "present")}");
+        if (previewHost is not null)
+        {
+            _projectionDisplayService.BindProgramPreviewHost(previewHost);
+        }
 
-        // Подписываемся на изменения видимости окна проекции
+        _projectionDisplayService.ProjectionWindowVisibilityChanged -= OnProjectionWindowVisibilityChanged;
         _projectionDisplayService.ProjectionWindowVisibilityChanged += OnProjectionWindowVisibilityChanged;
+        OnProjectionWindowVisibilityChanged(_projectionDisplayService, _projectionDisplayService.IsOpen);
     }
 
     private void OnProjectionWindowVisibilityChanged(object? sender, bool isVisible)
     {
         // Показываем превью только когда трансляция запущена
+        var previewHost = GetActivePreviewStageHost();
+        var idleHint = GetActivePreviewIdleHint();
+        if (previewHost is null || idleHint is null)
+        {
+            return;
+        }
+
         if (isVisible)
         {
-            PreviewStageHost.Visibility = Visibility.Visible;
-            PreviewIdleHint.Visibility = Visibility.Collapsed;
+            previewHost.Visibility = Visibility.Visible;
+            idleHint.Visibility = Visibility.Collapsed;
             
             // Принудительно обновляем превью при открытии трансляции
             _projectionDisplayService?.EnsureContentVisible();
         }
         else
         {
-            PreviewStageHost.Visibility = Visibility.Collapsed;
-            PreviewIdleHint.Visibility = Visibility.Visible;
+            previewHost.Visibility = Visibility.Collapsed;
+            idleHint.Visibility = Visibility.Visible;
         }
     }
+
+    private async Task ApplyModernLayoutAsync()
+    {
+        await ApplyPreviewCanvasAsync();
+        EnsureModernSectionStripe();
+    }
+
+    private void EnsureModernSectionStripe()
+    {
+        if (SectionListModern is null || ModernSectionStripe is null || ModernSectionHost is null)
+        {
+            return;
+        }
+
+        _sectionStripe ??= new ListSelectionStripeBinder(
+            SectionListModern,
+            ModernSectionStripe,
+            ModernSectionHost,
+            () => ViewModel.SelectedSection,
+            DispatcherQueue);
+        _sectionStripe.Attach();
+        _sectionStripe.RequestUpdate(animate: false);
+    }
+
+    private async Task ApplyPreviewCanvasAsync()
+    {
+        var (width, height) = await ProjectionOutputSize.GetAsync();
+        if (PreviewCanvasModern is not null)
+        {
+            ProjectionOutputSize.ApplyCanvas(PreviewCanvasModern, width, height);
+        }
+
+        if (_projectionDisplayService?.ProgramStage is ChyguiSlide.Controls.WebProjectionPreview preview)
+        {
+            preview.ApplyOutputSize(width, height);
+        }
+    }
+
+    private ListView? GetActiveSectionList() => SectionListModern;
+
+    private Grid? GetActivePreviewStageHost() => PreviewStageHostModern;
+
+    private TextBlock? GetActivePreviewIdleHint() => PreviewIdleHintModern;
 
     private async void OnOpenProjectionClick(object sender, RoutedEventArgs e)
     {

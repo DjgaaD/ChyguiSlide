@@ -95,6 +95,9 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
     private bool isShowStarted;
 
     [ObservableProperty]
+    private bool isProjectionCleared;
+
+    [ObservableProperty]
     private int currentSongIndex;
 
     [ObservableProperty]
@@ -124,6 +127,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
     public IRelayCommand ShowNextCommand { get; }
     public IRelayCommand ShowPreviousCommand { get; }
     public IRelayCommand ClearProjectionCommand { get; }
+    public IRelayCommand RestoreProjectionCommand { get; }
     public IRelayCommand<int> SkipToSectionCommand { get; }
     public IAsyncRelayCommand OpenProjectionCommand { get; }
     public IRelayCommand CloseProjectionCommand { get; }
@@ -157,7 +161,8 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
         RefreshQueueCommand = new AsyncRelayCommand(LoadQueueAsync);
         ShowNextCommand = new RelayCommand(AdvanceOrNextSong);
         ShowPreviousCommand = new AsyncRelayCommand(RewindOrPreviousSongAsync);
-        ClearProjectionCommand = new RelayCommand(ClearProjection);
+        ClearProjectionCommand = new RelayCommand(ClearProjection, () => IsShowStarted && !IsProjectionCleared);
+        RestoreProjectionCommand = new RelayCommand(RestoreProjection, () => IsShowStarted && IsProjectionCleared);
         SkipToSectionCommand = new RelayCommand<int>(SkipToSection);
         OpenProjectionCommand = new AsyncRelayCommand(StartShowFromButtonAsync, () => !IsShowStarted);
         CloseProjectionCommand = new RelayCommand(CloseProjection, () => _projectionDisplayService.IsOpen);
@@ -523,6 +528,8 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
     private void CloseProjection()
     {
         IsShowStarted = false;
+        IsProjectionCleared = false;
+        _projectionStateService.Clear();
         _projectionDisplayService.Hide();
     }
 
@@ -541,8 +548,9 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
             if (await _displaySettingsService.GetKeepProjectionBackgroundAsync())
             {
                 IsShowStarted = false;
+                IsProjectionCleared = false;
                 _projectionDisplayService.SetBlackout(false);
-                ClearProjection();
+                _projectionStateService.Clear();
                 StatusMessage = "Текст убран. Фон остаётся на экране.";
             }
             else
@@ -733,10 +741,26 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
 
     private void ClearProjection()
     {
-        _projectionStateService.Clear();
-        // Не сбрасываем выделение секции при очистке проекции, чтобы UI оставался в актуальном состоянии
-        // UpdateSectionsHighlight(-1);
+        _projectionStateService.SetLinesOverride(Array.Empty<string>());
+        IsProjectionCleared = true;
         NotifySectionProgressChanged();
+    }
+
+    private void RestoreProjection()
+    {
+        _projectionStateService.ClearLinesOverride();
+        IsProjectionCleared = false;
+        NotifySectionProgressChanged();
+    }
+
+    private void RestoreProjectionIfCleared()
+    {
+        if (!IsProjectionCleared)
+        {
+            return;
+        }
+
+        RestoreProjection();
     }
 
     private PlaylistEntry? ResolveEntryForHotkeyStart()
@@ -778,6 +802,24 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
     private static bool IsBibleProjection(Song? song) =>
         song?.DefaultKey?.StartsWith("bible:", StringComparison.OrdinalIgnoreCase) == true
         || song?.Subtitle?.Contains("Синодальный", StringComparison.OrdinalIgnoreCase) == true;
+
+    private static bool IsAnnouncementProjection(Song? song) =>
+        song?.Subtitle?.Equals("Объявление", StringComparison.OrdinalIgnoreCase) == true;
+
+    private static ProjectionContentKind ResolveProjectionContentKind(Song? song)
+    {
+        if (IsAnnouncementProjection(song))
+        {
+            return ProjectionContentKind.Announcement;
+        }
+
+        if (IsBibleProjection(song))
+        {
+            return ProjectionContentKind.Bible;
+        }
+
+        return ProjectionContentKind.Song;
+    }
 
     private static bool TryParseBibleProjection(Song? song, out string bookId, out int chapter)
     {
@@ -1200,6 +1242,56 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
     public bool IsSongInQuickPlaylist(Guid songId) =>
         QuickEntries.Any(e => e.SongId == songId);
 
+    public void RemoveQuickEntry(PlaylistEntry entry)
+    {
+        if (entry is null || !QuickEntries.Contains(entry))
+        {
+            return;
+        }
+
+        var title = entry.Song?.Title ?? "Позиция";
+        var wasSelected = SelectedQuickEntry == entry;
+        QuickEntries.Remove(entry);
+
+        for (var i = 0; i < QuickEntries.Count; i++)
+        {
+            QuickEntries[i].Order = i;
+        }
+
+        _currentEntries.Clear();
+        foreach (var quick in QuickEntries.Where(e => e.Song is not null).OrderBy(e => e.Order))
+        {
+            _currentEntries.Add(quick);
+        }
+
+        if (wasSelected)
+        {
+            _suppressQuickEntryShow = true;
+            SelectedQuickEntry = QuickEntries.FirstOrDefault();
+            _suppressQuickEntryShow = false;
+        }
+
+        if (_currentEntries.Count > 0)
+        {
+            CurrentSongIndex = Math.Clamp(CurrentSongIndex, 0, _currentEntries.Count - 1);
+            if (SelectedQuickEntry is not null)
+            {
+                var idx = _currentEntries.FindIndex(e => e.SongId == SelectedQuickEntry.SongId);
+                if (idx >= 0)
+                {
+                    CurrentSongIndex = idx;
+                }
+            }
+        }
+        else
+        {
+            CurrentSongIndex = 0;
+        }
+
+        NotifySongProgressChanged();
+        StatusMessage = $"«{title}» удалена из быстрого плейлиста.";
+    }
+
     public async void ShowSongSections(PlaylistEntry? entry)
     {
         await ShowSongSectionsAsync(entry);
@@ -1324,7 +1416,13 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
 
         // Устанавливаем песню в проектор сразу с нужной секции
         _projectionStateService.SetPlaylistContext(null);
-        _projectionStateService.SetSong(entry.SongId, entry.Song.Title, contentSegments, initialIndex, captions);
+        _projectionStateService.SetSong(
+            entry.SongId,
+            entry.Song.Title,
+            contentSegments,
+            initialIndex,
+            captions,
+            ResolveProjectionContentKind(entry.Song));
         UpdateSectionsHighlight(initialIndex);
 
         // Фон/тема уже на проекторе при открытом окне (постоянный фон) —
@@ -1402,6 +1500,28 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
             IsLoading = true;
             StatusMessage = "Сохраняем плейлист...";
 
+            var persistableEntries = new List<PlaylistEntry>();
+            var skippedTitles = new List<string>();
+
+            foreach (var entry in QuickEntries)
+            {
+                var song = await _catalogService.GetSongAsync(entry.SongId);
+                if (song is not null)
+                {
+                    persistableEntries.Add(entry);
+                }
+                else if (!string.IsNullOrWhiteSpace(entry.Song?.Title))
+                {
+                    skippedTitles.Add(entry.Song.Title);
+                }
+            }
+
+            if (persistableEntries.Count == 0)
+            {
+                StatusMessage = "В быстром плейлисте нет песен из каталога для сохранения.";
+                return;
+            }
+
             var playlist = new Playlist
             {
                 Id = Guid.NewGuid(),
@@ -1410,7 +1530,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
             };
 
             var order = 0;
-            foreach (var entry in QuickEntries)
+            foreach (var entry in persistableEntries)
             {
                 var newEntry = new PlaylistEntry
                 {
@@ -1432,7 +1552,9 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
             IsLoading = false;
             await LoadQueueAsync();
 
-            StatusMessage = $"Плейлист «{savedPlaylist.Name}» успешно сохранён.";
+            StatusMessage = skippedTitles.Count > 0
+                ? $"Плейлист «{savedPlaylist.Name}» сохранён ({persistableEntries.Count} песен). Пропущено (не из каталога): {string.Join(", ", skippedTitles)}."
+                : $"Плейлист «{savedPlaylist.Name}» успешно сохранён.";
         }
         catch (Exception ex)
         {
@@ -1531,6 +1653,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
         if (!isOpen)
         {
             IsShowStarted = false;
+            IsProjectionCleared = false;
         }
         OpenProjectionCommand.NotifyCanExecuteChanged();
         CloseProjectionCommand.NotifyCanExecuteChanged();
@@ -1596,6 +1719,14 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
             IsBlackoutEnabled = false;
         }
         OpenProjectionCommand.NotifyCanExecuteChanged();
+        ClearProjectionCommand.NotifyCanExecuteChanged();
+        RestoreProjectionCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnIsProjectionClearedChanged(bool value)
+    {
+        ClearProjectionCommand.NotifyCanExecuteChanged();
+        RestoreProjectionCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnIsProjectionWindowOpenChanged(bool value)
@@ -1616,6 +1747,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
 
     private void AdvanceOrNextSong()
     {
+        RestoreProjectionIfCleared();
         // Источник истины — состояние проекции; локальный список может быть пуст
         // (например, песня выбрана до инициализации LiveControl).
         var sectionCount = _currentSections.Count > 0
@@ -1663,6 +1795,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
 
     private async Task RewindOrPreviousSongAsync()
     {
+        RestoreProjectionIfCleared();
         if (_currentSections.Count == 0)
         {
             _projectionStateService.PreviousSection();
@@ -1697,6 +1830,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
 
     private void SkipToSection(int index)
     {
+        RestoreProjectionIfCleared();
         System.Diagnostics.Debug.WriteLine($"SkipToSection: index={index}, _currentSections.Count={_currentSections.Count}");
         ChyguiSlide.Data.InteractionLogger.Log($"SkipToSection: index={index}, _currentSections.Count={_currentSections.Count}");
 
@@ -1771,7 +1905,13 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
             ? sections.Select(section => (string?)section.Heading).ToList()
             : null;
 
-        _projectionStateService.SetSong(entry.SongId, entry.Song.Title, contentSegments, initialIndex, captions);
+        _projectionStateService.SetSong(
+            entry.SongId,
+            entry.Song.Title,
+            contentSegments,
+            initialIndex,
+            captions,
+            ResolveProjectionContentKind(entry.Song));
         UpdateSectionsHighlight(initialIndex);
 
         // Не переприменяем тему при смене песни — фон уже на экране

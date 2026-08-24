@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="UTF-8" ?>
+<?xml version="1.0" encoding="UTF-8" ?>
 <Application
     x:Class="ChyguiSlide.App"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -21,12 +21,40 @@
                     <SolidColorBrush x:Key="StrokeColorSecondaryBrush" Color="{StaticResource StrokeColorSecondary}" />
                     <Color x:Key="StrokeColorDefault">#14000000</Color>
                     <SolidColorBrush x:Key="StrokeColorDefaultBrush" Color="{StaticResource StrokeColorDefault}" />
+                    <SolidColorBrush x:Key="ModernPageBackgroundBrush" Color="#FFF4F6FA" />
+                    <SolidColorBrush x:Key="ModernHeaderBackgroundBrush" Color="#FFF7F8FB" />
+                    <SolidColorBrush x:Key="ModernHeaderBorderBrush" Color="#FFE2E6EE" />
+                    <SolidColorBrush x:Key="ModernSurfaceBrush" Color="#FFF0F2F6" />
+                    <SolidColorBrush x:Key="ModernSlideColumnBackgroundBrush" Color="#FFF7F8FB" />
+                    <SolidColorBrush x:Key="ModernMutedBrush" Color="#FF5C6778" />
+                    <SolidColorBrush x:Key="ModernAccentBrush" Color="#FF5B73A8" />
+                    <SolidColorBrush x:Key="ModernNavIdleForegroundBrush" Color="#FF5C6778" />
+                    <SolidColorBrush x:Key="ModernNavActiveForegroundBrush" Color="#FF1A2230" />
+                    <SolidColorBrush x:Key="ModernItemHoverBackgroundBrush" Color="#FFE8ECF3" />
+                    <SolidColorBrush x:Key="ModernItemSelectedBackgroundBrush" Color="#FFDCE4F2" />
+                    <SolidColorBrush x:Key="ModernGhostButtonBorderBrush" Color="#FFC5CDD8" />
+                    <SolidColorBrush x:Key="ModernPreviewIdleForegroundBrush" Color="#FF6B7688" />
+                    <SolidColorBrush x:Key="ModernStrokeBrush" Color="#FFE2E6EE" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Default">
                     <Color x:Key="StrokeColorSecondary">#33FFFFFF</Color>
                     <SolidColorBrush x:Key="StrokeColorSecondaryBrush" Color="{StaticResource StrokeColorSecondary}" />
                     <Color x:Key="StrokeColorDefault">#14FFFFFF</Color>
                     <SolidColorBrush x:Key="StrokeColorDefaultBrush" Color="{StaticResource StrokeColorDefault}" />
+                    <SolidColorBrush x:Key="ModernPageBackgroundBrush" Color="#FF0B1018" />
+                    <SolidColorBrush x:Key="ModernHeaderBackgroundBrush" Color="#FF0B1018" />
+                    <SolidColorBrush x:Key="ModernHeaderBorderBrush" Color="#FF1D2532" />
+                    <SolidColorBrush x:Key="ModernSurfaceBrush" Color="#FF0F1621" />
+                    <SolidColorBrush x:Key="ModernSlideColumnBackgroundBrush" Color="#FF0D131C" />
+                    <SolidColorBrush x:Key="ModernMutedBrush" Color="#FF95A1B6" />
+                    <SolidColorBrush x:Key="ModernAccentBrush" Color="#FF7084B6" />
+                    <SolidColorBrush x:Key="ModernNavIdleForegroundBrush" Color="#FF9AA6B8" />
+                    <SolidColorBrush x:Key="ModernNavActiveForegroundBrush" Color="#FFFFFFFF" />
+                    <SolidColorBrush x:Key="ModernItemHoverBackgroundBrush" Color="#FF151D29" />
+                    <SolidColorBrush x:Key="ModernItemSelectedBackgroundBrush" Color="#FF1A2433" />
+                    <SolidColorBrush x:Key="ModernGhostButtonBorderBrush" Color="#FF3A4558" />
+                    <SolidColorBrush x:Key="ModernPreviewIdleForegroundBrush" Color="#B3FFFFFF" />
+                    <SolidColorBrush x:Key="ModernStrokeBrush" Color="#FF1D2532" />
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
 

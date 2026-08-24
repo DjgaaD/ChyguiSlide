@@ -35,11 +35,25 @@ public interface IDisplaySettingsService
     Task SetBibleReferenceAlignmentAsync(string alignment);
     Task<AppUiThemeMode> GetAppUiThemeAsync();
     Task SetAppUiThemeAsync(AppUiThemeMode mode);
-    Task<BiblePickerLayoutMode> GetBiblePickerLayoutAsync();
-    Task SetBiblePickerLayoutAsync(BiblePickerLayoutMode mode);
-    Task<NavigationPaneMode> GetNavigationPaneModeAsync();
-    Task SetNavigationPaneModeAsync(NavigationPaneMode mode);
     Task<bool> GetAskBeforeCloseAsync();
     Task SetAskBeforeCloseAsync(bool ask);
+
+    Task<bool> GetObsStreamEnabledAsync();
+    Task SetObsStreamEnabledAsync(bool enabled);
+    Task<int> GetObsStreamPortAsync();
+    Task SetObsStreamPortAsync(int port);
+    Task<bool> GetObsStreamBackdropEnabledAsync();
+    Task SetObsStreamBackdropEnabledAsync(bool enabled);
+    Task<double> GetObsStreamBackdropOpacityAsync();
+    Task SetObsStreamBackdropOpacityAsync(double opacity);
+
+    Task<int> GetProjectionMarginLeftAsync();
+    Task SetProjectionMarginLeftAsync(int pixels);
+    Task<int> GetProjectionMarginRightAsync();
+    Task SetProjectionMarginRightAsync(int pixels);
+    Task<int> GetProjectionMarginTopAsync();
+    Task SetProjectionMarginTopAsync(int pixels);
+    Task<int> GetProjectionMarginBottomAsync();
+    Task SetProjectionMarginBottomAsync(int pixels);
 }
 

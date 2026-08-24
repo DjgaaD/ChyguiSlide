@@ -27,4 +27,10 @@ public interface ICatalogBackupService
         string remotePath,
         IProgress<string>? progress = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Заменить локальную БД файлом из папки. После вызова нужен перезапуск приложения.</summary>
+    Task RestoreFromLocalFileAsync(
+        string sourceDbPath,
+        IProgress<string>? progress = null,
+        CancellationToken cancellationToken = default);
 }

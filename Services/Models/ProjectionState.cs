@@ -7,7 +7,8 @@ public record ProjectionState(
     int SectionIndex,
     IReadOnlyList<string> VisibleLines,
     DateTimeOffset UpdatedAt,
-    string? ReferenceCaption)
+    string? ReferenceCaption,
+    ProjectionContentKind ContentKind = ProjectionContentKind.Song)
 {
     public static ProjectionState Empty { get; } = new(
         null,
@@ -16,6 +17,7 @@ public record ProjectionState(
         0,
         Array.Empty<string>(),
         DateTimeOffset.MinValue,
-        null);
+        null,
+        ProjectionContentKind.Song);
 }
 

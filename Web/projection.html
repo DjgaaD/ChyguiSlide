@@ -40,9 +40,13 @@
         }
         #stage {
             position: absolute;
-            inset: 0;
             z-index: 1;
             overflow: hidden;
+            /* inset задаётся из C# (setProjectionMargins); фон остаётся на весь экран */
+            top: 40px;
+            right: 48px;
+            bottom: 40px;
+            left: 48px;
         }
         /* Типографика как в Win32 ProjectionStageView:
            все строки одного кегля/цвета; у 2+ строки только opacity 0.85. */
@@ -54,8 +58,7 @@
             justify-content: center;
             flex-direction: column;
             text-align: center;
-            /* Margin="48,40" на SlideStage в Win32 */
-            padding: 40px 48px;
+            padding: 0;
             box-sizing: border-box;
             will-change: opacity, transform, filter, clip-path;
             color: #f5f2ea;
@@ -79,6 +82,12 @@
         .text-layer .line ~ .line {
             opacity: 0.85;
         }
+        .text-layer.align-justify .line {
+            width: 100%;
+            white-space: normal;
+            text-align: justify;
+            text-align-last: justify;
+        }
         .text-layer .reference {
             /* Кегль задаётся inline в px (фиксированный, как EdgeReferenceFontSize в Win32) */
             font-size: 28px;
@@ -87,9 +96,13 @@
             font-family: inherit;
             font-weight: inherit;
             text-shadow: inherit;
-            white-space: normal;
+            white-space: nowrap;
             max-width: 100%;
             line-height: 1.25;
+            /* Запас под text-stroke / ring-shadow, иначе край глифа обрезает #stage */
+            padding: 6px 14px;
+            box-sizing: border-box;
+            overflow: visible;
         }
         .text-layer .reference.align-left { text-align: left; align-self: stretch; }
         .text-layer .reference.align-center { text-align: center; align-self: stretch; }
@@ -97,12 +110,14 @@
         .text-layer .reference.pos-top,
         .text-layer .reference.pos-bottom {
             position: absolute;
-            left: 48px;
-            right: 48px;
+            left: 0;
+            right: 0;
             width: auto;
+            max-width: 100%;
+            overflow: visible;
         }
-        .text-layer .reference.pos-top { top: 40px; }
-        .text-layer .reference.pos-bottom { bottom: 40px; }
+        .text-layer .reference.pos-top { top: 0; }
+        .text-layer .reference.pos-bottom { bottom: 0; }
         .text-layer.has-reference { gap: 16px; }
     </style>
 </head>
@@ -180,7 +195,51 @@
                         transitionDurationMs = data.durationMs;
                     }
                     break;
+                case 'setProjectionMargins':
+                    applyProjectionMargins(data);
+                    break;
+                case 'setPreviewFit':
+                    setPreviewFit(!!data.enabled);
+                    break;
             }
+        }
+
+        function setPreviewFit(enabled) {
+            const root = document.documentElement;
+            const apply = () => {
+                const sx = window.innerWidth / 1920;
+                const sy = window.innerHeight / 1080;
+                const scale = Math.min(sx, sy);
+                root.style.zoom = String(scale > 0 ? scale : 1);
+            };
+            if (!enabled) {
+                root.style.zoom = '';
+                root.style.width = '';
+                root.style.height = '';
+                return;
+            }
+            root.style.width = '1920px';
+            root.style.height = '1080px';
+            apply();
+            if (!window.__previewFitHooked) {
+                window.__previewFitHooked = true;
+                window.addEventListener('resize', apply);
+            }
+            window.setPreviewFit = setPreviewFit;
+        }
+
+        function applyProjectionMargins(data) {
+            const stage = document.getElementById('stage');
+            if (!stage) return;
+            const l = Math.max(0, data.marginLeft ?? 0);
+            const r = Math.max(0, data.marginRight ?? 0);
+            const t = Math.max(0, data.marginTop ?? 0);
+            const b = Math.max(0, data.marginBottom ?? 0);
+            stage.style.top = t + 'px';
+            stage.style.right = r + 'px';
+            stage.style.bottom = b + 'px';
+            stage.style.left = l + 'px';
+            logToCSharp('[projection] margins=' + l + '/' + r + '/' + t + '/' + b);
         }
 
         function sleep(ms) {
@@ -224,7 +283,8 @@
             }
             if (data.textAlignment) {
                 const a = String(data.textAlignment).toLowerCase();
-                themeState.textAlignment = a === 'left' || a === 'right' ? a : 'center';
+                themeState.textAlignment =
+                    a === 'left' || a === 'right' || a === 'justify' ? a : 'center';
             }
             if (typeof data.lineSpacing === 'number' && data.lineSpacing >= 0) {
                 themeState.lineSpacing = data.lineSpacing;
@@ -331,9 +391,11 @@
             el.style.fontFamily = themeState.fontFamily;
             el.style.fontWeight = String(themeState.fontWeight);
             el.style.textAlign = themeState.textAlignment;
+            el.classList.toggle('align-justify', themeState.textAlignment === 'justify');
             el.style.alignItems =
                 themeState.textAlignment === 'left' ? 'flex-start'
                 : themeState.textAlignment === 'right' ? 'flex-end'
+                : themeState.textAlignment === 'justify' ? 'stretch'
                 : 'center';
             el.style.gap = `${themeState.lineSpacing}px`;
             el.style.fontSize = `${themeState.fontSize}px`;
@@ -417,6 +479,9 @@
             logToCSharp(`[projection] playSlide style=${style} dur=${dur} lines=${lines.length}`);
 
             switch (style) {
+                case 'None':
+                    await runInstant(lines, caption);
+                    break;
                 case 'Fade':
                 case 'Crossfade':
                     // Демо №02 Crossfade, длительность 500 мс
@@ -435,6 +500,21 @@
                     await runFadeSlide(lines, caption, dur);
                     break;
             }
+        }
+
+        async function runInstant(lines, caption) {
+            const [top, bottom] = topmost();
+            top.style.transition = 'none';
+            fillLayer(top, lines, caption);
+            top.style.opacity = 1;
+            top.style.transform = 'none';
+            top.style.filter = 'none';
+            top.style.clipPath = 'none';
+            bottom.style.transition = 'none';
+            bottom.style.opacity = 0;
+            bottom.style.transform = 'none';
+            bottom.style.filter = 'none';
+            bottom.style.clipPath = 'none';
         }
 
         /* ---------- 02: crossfade — как slide-transitions-demo.html runCrossfade ----------

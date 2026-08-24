@@ -36,7 +36,7 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
 
     private ProjectionWindowWeb? _windowWeb;
     private ProjectionDisplayViewModel? _viewModel;
-    private ProjectionStageView? _previewStage;
+    private WebProjectionPreview? _previewStage;
     private Panel? _previewHost;
     private CameraMediaStreamSource? _cameraMediaStreamSource;
     private NdiVideoRenderer? _ndiVideoRenderer;
@@ -183,36 +183,31 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
 
     public void BindProgramPreviewHost(Panel? host)
     {
-        _ = RunOnDispatcherAsync(() =>
+        _ = RunOnDispatcherAsync(async () =>
         {
             ChyguiSlide.Data.InteractionLogger.Log($"BindProgramPreviewHost: called. host={(host is null ? "null" : host.GetHashCode().ToString())}, existingPreviewStage={( _previewStage is null ? "null" : _previewStage.GetHashCode().ToString())}, existingPreviewHost={( _previewHost is null ? "null" : _previewHost.GetHashCode().ToString())}");
             System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] BindProgramPreviewHost called. host={(host is null ? "null" : host.GetHashCode().ToString())}");
             _previewHost = host;
             
-            // Создаем отдельный экземпляр для превью, если его нет.
-            // Если ViewModel ещё не создана, создаём её здесь, чтобы превью всегда могло быть инициализировано при привязке хоста.
             if (_previewStage is null)
             {
                 _viewModel ??= _serviceProvider.GetService<ProjectionDisplayViewModel>() ?? _serviceProvider.GetRequiredService<ProjectionDisplayViewModel>();
                 System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Creating preview stage instance");
                 ChyguiSlide.Data.InteractionLogger.Log("Creating preview stage instance");
-                _previewStage = new ProjectionStageView();
-                _previewStage.BindViewModel(_viewModel);
+                _previewStage = new WebProjectionPreview();
                 EnsureBackgroundMediaSubscription(_viewModel);
             }
 
             if (host is not null)
             {
-                // Не сбрасываем syncedBackgroundVideoPath при привязке превью,
-                // чтобы предотвратить мигание чёрным экраном при перезапуске видео
-                // при включении опции "Держать фон на экране"
-
                 System.Diagnostics.Debug.WriteLine("[ProjectionDisplay] Attaching preview stage to host");
                 ChyguiSlide.Data.InteractionLogger.Log("Attaching preview stage to host");
                 AttachStageToPreview(_previewStage);
-                // Принудительно обновляем превью при привязке
+                _previewStage.BindViewModel(_viewModel!);
+                var (width, height) = await ResolveOutputSizeAsync();
+                _previewStage.ApplyOutputSize(width, height);
                 _viewModel?.EnsureContentVisible();
-                // Синхронизируем видео фона для плеера превью
+                _previewStage.SyncNow();
                 _ = SyncThemeBackgroundVideoAsync();
             }
             else if (_previewStage?.Parent is Panel parent)
@@ -222,7 +217,27 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
         });
     }
 
-    private void AttachStageToPreview(ProjectionStageView stage)
+    private async Task<(int Width, int Height)> ResolveOutputSizeAsync()
+    {
+        try
+        {
+            var display = await _displaySettingsService.GetSelectedDisplayAsync();
+            var width = display?.Width ?? 1920;
+            var height = display?.Height ?? 1080;
+            if (width < 800 || height < 600)
+            {
+                return (1920, 1080);
+            }
+
+            return (width, height);
+        }
+        catch
+        {
+            return (1920, 1080);
+        }
+    }
+
+    private void AttachStageToPreview(WebProjectionPreview stage)
     {
         if (_previewHost is null)
         {

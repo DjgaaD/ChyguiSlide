@@ -175,13 +175,9 @@ public sealed class CatalogBackupService : ICatalogBackupService
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(remotePath);
         var settings = await RequireTokenAsync(cancellationToken).ConfigureAwait(false);
-        var dbPath = DatabasePathProvider.GetDatabasePath();
         var tempDir = Path.Combine(Path.GetTempPath(), "ChyguiSlide-Backup");
         Directory.CreateDirectory(tempDir);
         var tempFile = Path.Combine(tempDir, $"restore-{Guid.NewGuid():N}.db");
-        var backupBefore = Path.Combine(
-            Path.GetDirectoryName(dbPath)!,
-            $"catalog.before-restore-{DateTime.Now:yyyyMMdd-HHmmss}.db");
 
         try
         {
@@ -195,26 +191,66 @@ public sealed class CatalogBackupService : ICatalogBackupService
             }
 
             progress?.Report("Подготовка к замене базы…");
-            await CheckpointAndReleaseAsync(cancellationToken).ConfigureAwait(false);
-
-            if (File.Exists(dbPath))
-            {
-                File.Copy(dbPath, backupBefore, overwrite: true);
-            }
-
-            progress?.Report("Замена локальной базы…");
-            File.Copy(tempFile, dbPath, overwrite: true);
-
-            // WAL-хвосты от старой БД могут конфликтовать
-            TryDelete(dbPath + "-wal");
-            TryDelete(dbPath + "-shm");
-
-            progress?.Report("Готово. Перезапустите приложение.");
+            await RestoreDatabaseFromFileAsync(tempFile, progress, cancellationToken).ConfigureAwait(false);
         }
         finally
         {
             TryDelete(tempFile);
         }
+    }
+
+    public async Task RestoreFromLocalFileAsync(
+        string sourceDbPath,
+        IProgress<string>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourceDbPath);
+        if (!File.Exists(sourceDbPath))
+        {
+            throw new FileNotFoundException("Файл резервной копии не найден.", sourceDbPath);
+        }
+
+        if (new FileInfo(sourceDbPath).Length < 100)
+        {
+            throw new InvalidDataException("Файл слишком маленький — похоже, это не база.");
+        }
+
+        await _backupLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await RestoreDatabaseFromFileAsync(sourceDbPath, progress, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _backupLock.Release();
+        }
+    }
+
+    private async Task RestoreDatabaseFromFileAsync(
+        string sourceDbPath,
+        IProgress<string>? progress,
+        CancellationToken cancellationToken)
+    {
+        var dbPath = DatabasePathProvider.GetDatabasePath();
+        var backupBefore = Path.Combine(
+            Path.GetDirectoryName(dbPath)!,
+            $"catalog.before-restore-{DateTime.Now:yyyyMMdd-HHmmss}.db");
+
+        await CheckpointAndReleaseAsync(cancellationToken).ConfigureAwait(false);
+
+        if (File.Exists(dbPath))
+        {
+            File.Copy(dbPath, backupBefore, overwrite: true);
+        }
+
+        progress?.Report("Замена локальной базы…");
+        File.Copy(sourceDbPath, dbPath, overwrite: true);
+
+        // WAL-хвосты от старой БД могут конфликтовать
+        TryDelete(dbPath + "-wal");
+        TryDelete(dbPath + "-shm");
+
+        progress?.Report("Готово. Перезапустите приложение.");
     }
 
     private async Task CleanupOldBackupsAsync(YandexDiskSettings settings, CancellationToken cancellationToken)

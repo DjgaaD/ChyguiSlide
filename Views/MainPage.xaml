@@ -30,30 +30,192 @@
                             Text="{x:Bind Title}"
                             VerticalAlignment="Center"
                             Tag="NavLabel"
-                            Foreground="{Binding Foreground, ElementName=NavItem}"
-                            Visibility="{Binding IsPaneOpen, ElementName=ShellNav, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            Foreground="{Binding Foreground, ElementName=NavItem}" />
                     </StackPanel>
                 </NavigationViewItem.Content>
             </NavigationViewItem>
         </DataTemplate>
+
+        <Style x:Key="ModernNavTabItemStyle" TargetType="ListViewItem">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="MinWidth" Value="0" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListViewItem">
+                        <Grid Background="Transparent" Padding="18,0">
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup x:Name="CommonStates">
+                                    <VisualState x:Name="Normal" />
+                                    <VisualState x:Name="PointerOver">
+                                        <VisualState.Setters>
+                                            <Setter Target="Icon.Foreground" Value="{ThemeResource ModernNavActiveForegroundBrush}" />
+                                            <Setter Target="Title.Foreground" Value="{ThemeResource ModernNavActiveForegroundBrush}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Pressed">
+                                        <VisualState.Setters>
+                                            <Setter Target="Icon.Foreground" Value="{ThemeResource ModernNavActiveForegroundBrush}" />
+                                            <Setter Target="Title.Foreground" Value="{ThemeResource ModernNavActiveForegroundBrush}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="Selected">
+                                        <VisualState.Setters>
+                                            <Setter Target="Icon.Foreground" Value="{ThemeResource ModernNavActiveForegroundBrush}" />
+                                            <Setter Target="Title.Foreground" Value="{ThemeResource ModernNavActiveForegroundBrush}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="SelectedPointerOver">
+                                        <VisualState.Setters>
+                                            <Setter Target="Icon.Foreground" Value="{ThemeResource ModernNavActiveForegroundBrush}" />
+                                            <Setter Target="Title.Foreground" Value="{ThemeResource ModernNavActiveForegroundBrush}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="SelectedPressed">
+                                        <VisualState.Setters>
+                                            <Setter Target="Icon.Foreground" Value="{ThemeResource ModernNavActiveForegroundBrush}" />
+                                            <Setter Target="Title.Foreground" Value="{ThemeResource ModernNavActiveForegroundBrush}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="PointerOverSelected">
+                                        <VisualState.Setters>
+                                            <Setter Target="Icon.Foreground" Value="{ThemeResource ModernNavActiveForegroundBrush}" />
+                                            <Setter Target="Title.Foreground" Value="{ThemeResource ModernNavActiveForegroundBrush}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                    <VisualState x:Name="PressedSelected">
+                                        <VisualState.Setters>
+                                            <Setter Target="Icon.Foreground" Value="{ThemeResource ModernNavActiveForegroundBrush}" />
+                                            <Setter Target="Title.Foreground" Value="{ThemeResource ModernNavActiveForegroundBrush}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+                            <StackPanel
+                                Orientation="Horizontal"
+                                Spacing="8"
+                                VerticalAlignment="Center">
+                                <controls:LucideIcon
+                                    x:Name="Icon"
+                                    Kind="{Binding Icon}"
+                                    Size="16"
+                                    VerticalAlignment="Center"
+                                    Foreground="{ThemeResource ModernNavIdleForegroundBrush}" />
+                                <TextBlock
+                                    x:Name="Title"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    FontSize="15"
+                                    Foreground="{ThemeResource ModernNavIdleForegroundBrush}"
+                                    Text="{Binding Title}" />
+                            </StackPanel>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Page.Resources>
 
-    <NavigationView
-        x:Name="ShellNav"
-        Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
-        MenuItemsSource="{x:Bind ViewModel.NavigationItems}"
-        MenuItemTemplate="{StaticResource NavigationItemTemplate}"
-        PaneDisplayMode="Left"
-        OpenPaneLength="168"
-        CompactPaneLength="48"
-        IsPaneOpen="False"
-        IsBackButtonVisible="Collapsed"
-        IsSettingsVisible="False"
-        SelectedItem="{x:Bind ViewModel.SelectedItem, Mode=TwoWay}"
-        SelectionChanged="OnNavigationViewSelectionChanged"
-        Loaded="OnNavigationViewLoaded">
-        <NavigationView.Content>
-            <Frame x:Name="ContentFrame" />
-        </NavigationView.Content>
-    </NavigationView>
+    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid
+            x:Name="ModernHeader"
+            Grid.Row="0"
+            Height="56"
+            Background="{ThemeResource ModernHeaderBackgroundBrush}"
+            BorderBrush="{ThemeResource ModernHeaderBorderBrush}"
+            BorderThickness="0,0,0,1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel
+                Grid.Column="0"
+                Margin="20,0,0,0"
+                Orientation="Horizontal"
+                Spacing="10"
+                VerticalAlignment="Center">
+                <controls:LucideIcon
+                    Kind="book-open-text"
+                    Size="22"
+                    Foreground="{ThemeResource ModernAccentBrush}"
+                    VerticalAlignment="Center" />
+                <TextBlock
+                    FontSize="16"
+                    FontWeight="SemiBold"
+                    VerticalAlignment="Center"
+                    Foreground="{ThemeResource ModernNavActiveForegroundBrush}"
+                    Text="Чугуй Слайды" />
+            </StackPanel>
+
+            <Grid x:Name="ModernNavHost" Grid.Column="1" VerticalAlignment="Stretch">
+                <ListView
+                    x:Name="ModernNavList"
+                    VerticalAlignment="Stretch"
+                    HorizontalAlignment="Center"
+                    ItemsSource="{x:Bind ViewModel.NavigationItems}"
+                    SelectedItem="{x:Bind ViewModel.SelectedItem, Mode=TwoWay}"
+                    SelectionMode="Single"
+                    IsItemClickEnabled="True"
+                    ItemClick="OnModernNavItemClick"
+                    SelectionChanged="OnModernNavSelectionChanged"
+                    SizeChanged="OnModernNavSizeChanged"
+                    ItemContainerStyle="{StaticResource ModernNavTabItemStyle}"
+                    ScrollViewer.HorizontalScrollBarVisibility="Hidden"
+                    ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                    ScrollViewer.HorizontalScrollMode="Disabled"
+                    ScrollViewer.VerticalScrollMode="Disabled">
+                    <ListView.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ListView.ItemsPanel>
+                </ListView>
+                <Rectangle
+                    x:Name="ModernNavStripe"
+                    Width="40"
+                    Height="2"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Bottom"
+                    Fill="{ThemeResource ModernAccentBrush}"
+                    IsHitTestVisible="False"
+                    Opacity="0">
+                    <Rectangle.RenderTransform>
+                        <TranslateTransform x:Name="ModernNavStripeTransform" />
+                    </Rectangle.RenderTransform>
+                </Rectangle>
+            </Grid>
+        </Grid>
+
+        <NavigationView
+            x:Name="ShellNav"
+            Grid.Row="1"
+            Background="{ThemeResource ApplicationPageBackgroundThemeBrush}"
+            MenuItemsSource="{x:Bind ViewModel.NavigationItems}"
+            MenuItemTemplate="{StaticResource NavigationItemTemplate}"
+            PaneDisplayMode="LeftMinimal"
+            OpenPaneLength="0"
+            CompactPaneLength="0"
+            IsPaneOpen="False"
+            IsPaneToggleButtonVisible="False"
+            IsBackButtonVisible="Collapsed"
+            IsSettingsVisible="False"
+            SelectedItem="{x:Bind ViewModel.SelectedItem, Mode=TwoWay}"
+            SelectionChanged="OnNavigationViewSelectionChanged"
+            Loaded="OnNavigationViewLoaded">
+            <NavigationView.Content>
+                <Frame x:Name="ContentFrame" />
+            </NavigationView.Content>
+        </NavigationView>
+    </Grid>
 </Page>

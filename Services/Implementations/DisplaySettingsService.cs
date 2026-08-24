@@ -1196,6 +1196,14 @@ public sealed class DisplaySettingsService : IDisplaySettingsService
 
     private const string ShowBibleReferenceKey = "ShowBibleReference";
     private const string KeepProjectionBackgroundKey = "KeepProjectionBackground";
+    private const string ObsStreamEnabledKey = "ObsStreamEnabled";
+    private const string ObsStreamPortKey = "ObsStreamPort";
+    private const string ObsStreamBackdropEnabledKey = "ObsStreamBackdropEnabled";
+    private const string ObsStreamBackdropOpacityKey = "ObsStreamBackdropOpacity";
+    private const string ProjectionMarginLeftKey = "ProjectionMarginLeft";
+    private const string ProjectionMarginRightKey = "ProjectionMarginRight";
+    private const string ProjectionMarginTopKey = "ProjectionMarginTop";
+    private const string ProjectionMarginBottomKey = "ProjectionMarginBottom";
     private const string BibleReferencePlacementKey = "BibleReferencePlacement";
     private const string BibleReferenceAlignmentKey = "BibleReferenceAlignment";
 
@@ -1224,6 +1232,86 @@ public sealed class DisplaySettingsService : IDisplaySettingsService
         System.Diagnostics.Debug.WriteLine($"[DisplaySettingsService] SetKeepProjectionBackgroundAsync: WriteSettingAsync completed");
         ChyguiSlide.Data.InteractionLogger.Log($"DisplaySettingsService.SetKeepProjectionBackgroundAsync: WriteSettingAsync completed");
     }
+
+    public async Task<bool> GetObsStreamEnabledAsync()
+    {
+        var raw = await ReadSettingAsync(ObsStreamEnabledKey).ConfigureAwait(false);
+        return bool.TryParse(raw, out var value) && value;
+    }
+
+    public async Task SetObsStreamEnabledAsync(bool enabled)
+    {
+        await WriteSettingAsync(ObsStreamEnabledKey, enabled.ToString()).ConfigureAwait(false);
+    }
+
+    public async Task<int> GetObsStreamPortAsync()
+    {
+        var raw = await ReadSettingAsync(ObsStreamPortKey).ConfigureAwait(false);
+        return int.TryParse(raw, out var port) ? Math.Clamp(port, 1024, 65535) : 8765;
+    }
+
+    public async Task SetObsStreamPortAsync(int port)
+    {
+        await WriteSettingAsync(ObsStreamPortKey, Math.Clamp(port, 1024, 65535).ToString()).ConfigureAwait(false);
+    }
+
+    public async Task<bool> GetObsStreamBackdropEnabledAsync()
+    {
+        var raw = await ReadSettingAsync(ObsStreamBackdropEnabledKey).ConfigureAwait(false);
+        return bool.TryParse(raw, out var value) && value;
+    }
+
+    public async Task SetObsStreamBackdropEnabledAsync(bool enabled)
+    {
+        await WriteSettingAsync(ObsStreamBackdropEnabledKey, enabled.ToString()).ConfigureAwait(false);
+    }
+
+    public async Task<double> GetObsStreamBackdropOpacityAsync()
+    {
+        var raw = await ReadSettingAsync(ObsStreamBackdropOpacityKey).ConfigureAwait(false);
+        if (double.TryParse(raw, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var value))
+        {
+            return Math.Clamp(value, 0, 1);
+        }
+
+        return 0.9;
+    }
+
+    public async Task SetObsStreamBackdropOpacityAsync(double opacity)
+    {
+        var clamped = Math.Clamp(opacity, 0, 1);
+        await WriteSettingAsync(
+            ObsStreamBackdropOpacityKey,
+            clamped.ToString(System.Globalization.CultureInfo.InvariantCulture)).ConfigureAwait(false);
+    }
+
+    public Task<int> GetProjectionMarginLeftAsync() => GetProjectionMarginAsync(ProjectionMarginLeftKey, 48);
+
+    public Task SetProjectionMarginLeftAsync(int pixels) =>
+        WriteSettingAsync(ProjectionMarginLeftKey, ClampProjectionMargin(pixels).ToString());
+
+    public Task<int> GetProjectionMarginRightAsync() => GetProjectionMarginAsync(ProjectionMarginRightKey, 48);
+
+    public Task SetProjectionMarginRightAsync(int pixels) =>
+        WriteSettingAsync(ProjectionMarginRightKey, ClampProjectionMargin(pixels).ToString());
+
+    public Task<int> GetProjectionMarginTopAsync() => GetProjectionMarginAsync(ProjectionMarginTopKey, 40);
+
+    public Task SetProjectionMarginTopAsync(int pixels) =>
+        WriteSettingAsync(ProjectionMarginTopKey, ClampProjectionMargin(pixels).ToString());
+
+    public Task<int> GetProjectionMarginBottomAsync() => GetProjectionMarginAsync(ProjectionMarginBottomKey, 40);
+
+    public Task SetProjectionMarginBottomAsync(int pixels) =>
+        WriteSettingAsync(ProjectionMarginBottomKey, ClampProjectionMargin(pixels).ToString());
+
+    private async Task<int> GetProjectionMarginAsync(string key, int defaultValue)
+    {
+        var raw = await ReadSettingAsync(key).ConfigureAwait(false);
+        return int.TryParse(raw, out var value) ? ClampProjectionMargin(value) : defaultValue;
+    }
+
+    private static int ClampProjectionMargin(int pixels) => Math.Clamp(pixels, 0, 4000);
 
     public async Task<BibleReferencePlacement> GetBibleReferencePlacementAsync()
     {
@@ -1262,36 +1350,6 @@ public sealed class DisplaySettingsService : IDisplaySettingsService
     public async Task SetAppUiThemeAsync(AppUiThemeMode mode)
     {
         await WriteSettingAsync(AppUiThemeKey, mode.ToString()).ConfigureAwait(false);
-    }
-
-    private const string BiblePickerLayoutKey = "BiblePickerLayout";
-
-    public async Task<BiblePickerLayoutMode> GetBiblePickerLayoutAsync()
-    {
-        var raw = await ReadSettingAsync(BiblePickerLayoutKey).ConfigureAwait(false);
-        return Enum.TryParse<BiblePickerLayoutMode>(raw, true, out var mode)
-            ? mode
-            : BiblePickerLayoutMode.Lists;
-    }
-
-    public async Task SetBiblePickerLayoutAsync(BiblePickerLayoutMode mode)
-    {
-        await WriteSettingAsync(BiblePickerLayoutKey, mode.ToString()).ConfigureAwait(false);
-    }
-
-    private const string NavigationPaneModeKey = "NavigationPaneMode";
-
-    public async Task<NavigationPaneMode> GetNavigationPaneModeAsync()
-    {
-        var raw = await ReadSettingAsync(NavigationPaneModeKey).ConfigureAwait(false);
-        return Enum.TryParse<NavigationPaneMode>(raw, true, out var mode)
-            ? mode
-            : NavigationPaneMode.Collapsed;
-    }
-
-    public async Task SetNavigationPaneModeAsync(NavigationPaneMode mode)
-    {
-        await WriteSettingAsync(NavigationPaneModeKey, mode.ToString()).ConfigureAwait(false);
     }
 
     private const string AskBeforeCloseKey = "AskBeforeClose";

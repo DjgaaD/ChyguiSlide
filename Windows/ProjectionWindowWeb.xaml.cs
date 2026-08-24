@@ -69,55 +69,14 @@ public sealed partial class ProjectionWindowWeb : Window
         try
         {
             ChyguiSlide.Data.InteractionLogger.Log("[ProjectionWindowWeb] Starting WebView2 initialization...");
-
-            // В Program Files рядом с exe писать нельзя — каталог профиля WebView2 в LocalAppData.
-            var userDataFolder = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "ChyguiSlide",
-                "WebView2");
-            Directory.CreateDirectory(userDataFolder);
-            // WinUI: CreateWithOptionsAsync — каталог профиля в LocalAppData (не рядом с exe в Program Files).
-            var environment = await CoreWebView2Environment.CreateWithOptionsAsync(
-                browserExecutableFolder: null,
-                userDataFolder: userDataFolder,
-                options: new CoreWebView2EnvironmentOptions());
-            await WebView.EnsureCoreWebView2Async(environment);
-            ChyguiSlide.Data.InteractionLogger.Log(
-                $"[ProjectionWindowWeb] WebView2 initialized successfully (userData={userDataFolder})");
-
-            if (WebView.CoreWebView2 is not null)
-            {
-                var backgroundsDir = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "ChyguiSlide",
-                    "Backgrounds");
-                Directory.CreateDirectory(backgroundsDir);
-                WebView.CoreWebView2.SetVirtualHostNameToFolderMapping(
-                    "chygui.backgrounds",
-                    backgroundsDir,
-                    CoreWebView2HostResourceAccessKind.Allow);
-            }
-
-            if (!_navigationHooked && WebView.CoreWebView2 is not null)
+            if (!_navigationHooked)
             {
                 _navigationHooked = true;
-                WebView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
+                WebView.NavigationCompleted += OnNavigationCompleted;
             }
 
-            var htmlPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Web", "projection.html");
-            ChyguiSlide.Data.InteractionLogger.Log($"[ProjectionWindowWeb] HTML path: {htmlPath}");
-            ChyguiSlide.Data.InteractionLogger.Log($"[ProjectionWindowWeb] HTML exists: {File.Exists(htmlPath)}");
-
-            if (!File.Exists(htmlPath))
-            {
-                ChyguiSlide.Data.InteractionLogger.Log($"[ProjectionWindowWeb] HTML file not found: {htmlPath}");
-                return;
-            }
-
-            var htmlContent = await File.ReadAllTextAsync(htmlPath);
-            ChyguiSlide.Data.InteractionLogger.Log($"[ProjectionWindowWeb] Loading HTML content, length: {htmlContent.Length}");
-            WebView.NavigateToString(htmlContent);
-            ChyguiSlide.Data.InteractionLogger.Log("[ProjectionWindowWeb] NavigateToString issued");
+            await WebProjectionRuntime.PrepareWebViewAsync(WebView, profileName: "projection");
+            ChyguiSlide.Data.InteractionLogger.Log("[ProjectionWindowWeb] WebView2 initialized and HTML loaded");
         }
         catch (Exception ex)
         {
@@ -161,11 +120,11 @@ public sealed partial class ProjectionWindowWeb : Window
         Activated -= OnActivated;
         StopCursorSuppression();
         DisposeAdapter();
-        if (WebView.CoreWebView2 is not null && _navigationHooked)
+        if (_navigationHooked)
         {
             try
             {
-                WebView.CoreWebView2.NavigationCompleted -= OnNavigationCompleted;
+                WebView.NavigationCompleted -= OnNavigationCompleted;
             }
             catch
             {

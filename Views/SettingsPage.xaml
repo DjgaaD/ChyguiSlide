@@ -104,6 +104,68 @@
                             Padding="20">
                             <StackPanel Spacing="12">
                                 <StackPanel Spacing="4">
+                                    <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Отступы текста на экране" />
+                                    <TextBlock
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        TextWrapping="Wrap"
+                                        Text="Фон занимает весь экран, текст размещается внутри заданных отступов. Размер шрифта подстраивается под получившуюся область." />
+                                </StackPanel>
+                                <Grid ColumnSpacing="12" RowSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <NumberBox
+                                        Grid.Row="0"
+                                        Grid.Column="0"
+                                        Header="Слева (px)"
+                                        Minimum="0"
+                                        Maximum="4000"
+                                        SpinButtonPlacementMode="Inline"
+                                        Value="{Binding ProjectionMarginLeft, Mode=TwoWay}" />
+                                    <NumberBox
+                                        Grid.Row="0"
+                                        Grid.Column="1"
+                                        Header="Справа (px)"
+                                        Minimum="0"
+                                        Maximum="4000"
+                                        SpinButtonPlacementMode="Inline"
+                                        Value="{Binding ProjectionMarginRight, Mode=TwoWay}" />
+                                    <NumberBox
+                                        Grid.Row="1"
+                                        Grid.Column="0"
+                                        Header="Сверху (px)"
+                                        Minimum="0"
+                                        Maximum="4000"
+                                        SpinButtonPlacementMode="Inline"
+                                        Value="{Binding ProjectionMarginTop, Mode=TwoWay}" />
+                                    <NumberBox
+                                        Grid.Row="1"
+                                        Grid.Column="1"
+                                        Header="Снизу (px)"
+                                        Minimum="0"
+                                        Maximum="4000"
+                                        SpinButtonPlacementMode="Inline"
+                                        Value="{Binding ProjectionMarginBottom, Mode=TwoWay}" />
+                                </Grid>
+                                <TextBlock
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="{Binding ProjectionContentAreaHint, Mode=OneWay}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="12"
+                            Padding="20">
+                            <StackPanel Spacing="12">
+                                <StackPanel Spacing="4">
                                     <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Постоянный фон" />
                                     <TextBlock
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -113,6 +175,74 @@
                                 <CheckBox
                                     Content="Держать фон на экране"
                                     IsChecked="{Binding KeepProjectionBackground, Mode=TwoWay}" />
+                            </StackPanel>
+                        </Border>
+
+                        <Border
+                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="12"
+                            Padding="20">
+                            <StackPanel Spacing="12">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="OBS / стрим (локальная сеть)" />
+                                    <TextBlock
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        TextWrapping="Wrap"
+                                        Text="Передаёт только текст слайдов на другой ПК в той же сети. В OBS добавьте источник «Browser Source» с URL ниже, задайте нужный размер (например 1920×200) — перенос строк и размер шрифта подстроятся автоматически. Включите прозрачный фон в OBS." />
+                                </StackPanel>
+                                <ToggleSwitch
+                                    Header="Включить OBS-выход"
+                                    IsOn="{Binding ObsStreamEnabled, Mode=TwoWay}" />
+                                <ToggleSwitch
+                                    Header="Тёмная подложка под текст"
+                                    IsOn="{Binding ObsStreamBackdropEnabled, Mode=TwoWay}"
+                                    IsEnabled="{Binding ObsStreamEnabled}" />
+                                <NumberBox
+                                    Header="Непрозрачность подложки (%)"
+                                    Minimum="0"
+                                    Maximum="100"
+                                    SpinButtonPlacementMode="Inline"
+                                    SmallChange="5"
+                                    LargeChange="10"
+                                    Value="{Binding ObsStreamBackdropOpacity, Mode=TwoWay}"
+                                    IsEnabled="{Binding ObsStreamBackdropEnabled}" />
+                                <NumberBox
+                                    Header="Порт"
+                                    Minimum="1024"
+                                    Maximum="65535"
+                                    SpinButtonPlacementMode="Inline"
+                                    Value="{Binding ObsStreamPort, Mode=TwoWay}"
+                                    IsEnabled="{Binding ObsStreamEnabled}" />
+                                <TextBlock
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="URL для OBS на другом ПК в локальной сети:" />
+                                <TextBlock
+                                    FontFamily="Consolas,Courier New"
+                                    IsTextSelectionEnabled="True"
+                                    Text="{Binding ObsStreamUrlHint, Mode=OneWay}" />
+                                <TextBlock
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="Проверка на этом же ПК (не для OBS на другом компьютере):" />
+                                <TextBlock
+                                    FontFamily="Consolas,Courier New"
+                                    IsTextSelectionEnabled="True"
+                                    Text="{Binding ObsStreamLocalUrlHint, Mode=OneWay}" />
+                                <TextBlock
+                                    Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                    TextWrapping="Wrap"
+                                    Visibility="{Binding ObsStreamShowsLanWarning, Converter={StaticResource BoolToVisibilityConverter}}"
+                                    Text="Сервер слушает только localhost. URL выше — ваш LAN IP; если страница не открывается с другого ПК, разрешите «Чугуй Слайды» в брандмауэре Windows для частной сети." />
+                                <TextBlock
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    TextWrapping="Wrap"
+                                    IsTextSelectionEnabled="True"
+                                    Text="{Binding ObsStreamStatus}" />
+                                <TextBlock
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    TextWrapping="Wrap"
+                                    Text="При первом запуске Windows может запросить разрешение брандмауэра для приложения — разрешите доступ в локальной сети." />
                             </StackPanel>
                         </Border>
 
@@ -295,68 +425,6 @@
                                             Content="Тёмная"
                                             Style="{StaticResource SegmentedRadioStyle}"
                                             IsChecked="{Binding IsAppUiThemeDark, Mode=TwoWay}" />
-                                    </Grid>
-                                </Border>
-                            </Grid>
-
-                            <Grid ColumnSpacing="16">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="140" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock
-                                    Text="Меню"
-                                    VerticalAlignment="Center"
-                                    Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                <Border Grid.Column="1" Style="{StaticResource SegmentedTrackStyle}">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <RadioButton
-                                            Grid.Column="0"
-                                            GroupName="NavigationPane"
-                                            Content="Свёрнуто"
-                                            Style="{StaticResource SegmentedRadioStyle}"
-                                            IsChecked="{Binding IsNavigationPaneCollapsed, Mode=TwoWay}" />
-                                        <RadioButton
-                                            Grid.Column="1"
-                                            GroupName="NavigationPane"
-                                            Content="Развёрнуто"
-                                            Style="{StaticResource SegmentedRadioStyle}"
-                                            IsChecked="{Binding IsNavigationPaneExpanded, Mode=TwoWay}" />
-                                    </Grid>
-                                </Border>
-                            </Grid>
-
-                            <Grid ColumnSpacing="16">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="140" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <TextBlock
-                                    Text="Библия"
-                                    VerticalAlignment="Center"
-                                    Style="{StaticResource BodyStrongTextBlockStyle}" />
-                                <Border Grid.Column="1" Style="{StaticResource SegmentedTrackStyle}">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <RadioButton
-                                            Grid.Column="0"
-                                            GroupName="BiblePicker"
-                                            Content="Списки"
-                                            Style="{StaticResource SegmentedRadioStyle}"
-                                            IsChecked="{Binding IsBiblePickerLists, Mode=TwoWay}" />
-                                        <RadioButton
-                                            Grid.Column="1"
-                                            GroupName="BiblePicker"
-                                            Content="Таблица"
-                                            Style="{StaticResource SegmentedRadioStyle}"
-                                            IsChecked="{Binding IsBiblePickerGrid, Mode=TwoWay}" />
                                     </Grid>
                                 </Border>
                             </Grid>
@@ -601,6 +669,9 @@
                                     <Button
                                         Content="Копия в папку…"
                                         Command="{Binding BackupCatalogLocalCommand}" />
+                                    <Button
+                                        Content="Восстановить из папки…"
+                                        Click="OnRestoreLocalBackupClicked" />
                                     <Button Content="Обновить список" Command="{Binding RefreshYandexBackupsCommand}" />
                                 </StackPanel>
 
