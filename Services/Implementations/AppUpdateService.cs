@@ -195,8 +195,9 @@ public sealed class AppUpdateService : IAppUpdateService, IDisposable
             return isPrerelease || isBetaTag;
         }
 
-        // release: только стабильные
-        return !isPrerelease && !isBetaTag;
+        // release: ignore GitHub prerelease flag - some historical numbered releases were marked
+        // prerelease on GitHub but are still the release-channel builds (clean semver tags).
+        return !isBetaTag;
     }
 
     private static bool TryFindSetupAsset(
