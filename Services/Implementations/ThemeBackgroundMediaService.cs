@@ -128,10 +128,20 @@ public sealed class ThemeBackgroundMediaService : IThemeBackgroundMediaService
                 return storedPath;
             }
 
-            var byName = Path.Combine(BackgroundsDirectory, Path.GetFileName(storedPath));
+            var mediaDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "ChyguiSlide",
+                "Media");
+            var byName = Path.Combine(mediaDir, Path.GetFileName(storedPath));
             if (File.Exists(byName))
             {
                 return byName;
+            }
+
+            var byNameBackgrounds = Path.Combine(BackgroundsDirectory, Path.GetFileName(storedPath));
+            if (File.Exists(byNameBackgrounds))
+            {
+                return byNameBackgrounds;
             }
         }
         catch

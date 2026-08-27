@@ -123,6 +123,7 @@ public sealed class ObsProjectionBridge : IDisposable
 
     private static bool ShouldClearObs(ProjectionState state) =>
         state.ContentKind == ProjectionContentKind.Announcement
+        || state.ContentKind == ProjectionContentKind.Media
         || state.SongId is null
         || state.VisibleLines.Count == 0;
 

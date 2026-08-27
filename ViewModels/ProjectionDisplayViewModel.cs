@@ -43,6 +43,12 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
     /// <summary>Срабатывает после смены пути фонового медиа (для синхронизации видеоплеера).</summary>
     public event EventHandler? BackgroundMediaChanged;
 
+    /// <summary>Срабатывает при смене foreground media (фото/видео плейлиста).</summary>
+    public event EventHandler? ForegroundMediaChanged;
+
+    /// <summary>Статус воспроизведения foreground video из WebView2.</summary>
+    public event EventHandler<MediaPlaybackStatus>? MediaStatusChanged;
+
     public ObservableCollection<ProjectionLineItem> Lines { get; } = new();
     public ObservableCollection<ProjectionLineItem> OutgoingLines { get; } = new();
 
@@ -67,6 +73,15 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
 
     [ObservableProperty]
     private DateTimeOffset updatedAt;
+
+    [ObservableProperty]
+    private ProjectionContentKind contentKind = ProjectionContentKind.Song;
+
+    [ObservableProperty]
+    private string? mediaPath;
+
+    /// <summary>Зацикливание foreground-видео плейлиста (общее для окна и превью).</summary>
+    public bool MediaLoopEnabled { get; set; }
 
     [ObservableProperty]
     private bool isBlackout;
@@ -736,7 +751,22 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
         var state = _projectionStateService.Current;
         ReferenceCaption = state.ReferenceCaption;
         NotifyReferenceVisibility();
+        if (state.ContentKind == ProjectionContentKind.Media
+            && !string.IsNullOrWhiteSpace(state.MediaPath))
+        {
+            ContentKind = ProjectionContentKind.Media;
+            MediaPath = state.MediaPath;
+            RefreshLines(Array.Empty<string>());
+            ForegroundMediaChanged?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
         RefreshLines(state.VisibleLines);
+    }
+
+    public void ReportMediaStatus(MediaPlaybackStatus status)
+    {
+        MediaStatusChanged?.Invoke(this, status);
     }
 
     /// <summary>
@@ -795,6 +825,33 @@ public sealed partial class ProjectionDisplayViewModel : ObservableRecipient
         SongTitle = state.SongTitle;
         SectionIndex = state.SectionIndex;
         UpdatedAt = state.UpdatedAt.ToLocalTime();
+
+        var previousMediaPath = MediaPath;
+        var previousKind = ContentKind;
+        ContentKind = state.ContentKind;
+        MediaPath = state.ContentKind == ProjectionContentKind.Media ? state.MediaPath : null;
+
+        if (state.ContentKind == ProjectionContentKind.Media
+            && !string.IsNullOrWhiteSpace(state.MediaPath))
+        {
+            ReferenceCaption = null;
+            NotifyReferenceVisibility();
+            RefreshLines(Array.Empty<string>());
+            if (!string.Equals(previousMediaPath, MediaPath, StringComparison.OrdinalIgnoreCase)
+                || previousKind != ProjectionContentKind.Media)
+            {
+                ForegroundMediaChanged?.Invoke(this, EventArgs.Empty);
+            }
+
+            _lastSongId = state.SongId;
+            return;
+        }
+
+        if (previousKind == ProjectionContentKind.Media
+            || !string.IsNullOrWhiteSpace(previousMediaPath))
+        {
+            ForegroundMediaChanged?.Invoke(this, EventArgs.Empty);
+        }
 
         // Не перезапускаем фон при смене песни, если фон уже установлен
         // Это предотвращает мерцание при первом запуске показа с постоянным фоном

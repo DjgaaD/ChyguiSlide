@@ -1,4 +1,5 @@
 using ChyguiSlide.Data.Entities;
+using ChyguiSlide.Services.Models;
 
 namespace ChyguiSlide.Services.Abstractions;
 
@@ -11,6 +12,8 @@ public interface IProjectionDisplayService
     event EventHandler<bool>? ProjectionWindowVisibilityChanged;
     event EventHandler<bool>? BlackoutStateChanged;
     event EventHandler<bool>? NdiModeStateChanged;
+    event EventHandler<MediaPlaybackStatus>? MediaStatusChanged;
+    event EventHandler<string>? MediaPlaybackFailed;
 
     /// <summary>Сцена превью программы в Live Control (зеркало текущего слайда).</summary>
     UIElement? ProgramStage { get; }
@@ -27,6 +30,14 @@ public interface IProjectionDisplayService
     Task ToggleVideoModeAsync();
     Task ToggleNdiVideoModeAsync();
     Task<List<NdiSource>> GetAvailableNdiSourcesAsync();
+
+    void MediaPlay();
+    void MediaPause();
+    void MediaSeek(double positionSec);
+    void MediaSetLoop(bool loop);
+
+    /// <summary>
+    /// Остановить нативный MediaPlayer/оверлей до ухода со страницы (иначе WinUI COM-краш).
+    /// </summary>
+    void StopForegroundMedia();
 }
-
-

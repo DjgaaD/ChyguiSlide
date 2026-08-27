@@ -1258,6 +1258,13 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         OnPropertyChanged(nameof(CanKeepProjectionBackground));
         OnPropertyChanged(nameof(KeepProjectionBackgroundHint));
 
+        // Во время перезагрузки списка ComboBox временно сбрасывает SelectedDisplay в null /
+        // на первый (основной) экран — не выключаем опцию из‑за этого мерцания.
+        if (IsLoadingDisplays)
+        {
+            return;
+        }
+
         if (!CanKeepProjectionBackground && KeepProjectionBackground)
         {
             KeepProjectionBackground = false;
@@ -2594,8 +2601,6 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
             {
                 StatusMessage = "Экраны не найдены. Проверьте подключение мониторов.";
             }
-
-            RefreshKeepProjectionBackgroundAvailability();
         }
         catch (Exception ex)
         {
@@ -2605,6 +2610,7 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
         finally
         {
             IsLoadingDisplays = false;
+            RefreshKeepProjectionBackgroundAvailability();
         }
     }
 
@@ -2667,6 +2673,14 @@ public sealed partial class ThemePresetEditorViewModel : ObservableRecipient
     partial void OnSelectedDisplayChanged(DisplayInfo? value)
     {
         OnPropertyChanged(nameof(ProjectionContentAreaHint));
+
+        if (IsLoadingDisplays)
+        {
+            OnPropertyChanged(nameof(CanKeepProjectionBackground));
+            OnPropertyChanged(nameof(KeepProjectionBackgroundHint));
+            return;
+        }
+
         RefreshKeepProjectionBackgroundAvailability();
         if (value is not null)
         {

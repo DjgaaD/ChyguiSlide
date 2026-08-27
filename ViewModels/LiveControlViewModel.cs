@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -26,6 +27,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
     private readonly IDisplaySettingsService _displaySettingsService;
     private readonly ICameraStreamService _cameraStreamService;
     private readonly IBibleService _bibleService;
+    private readonly IPlaylistMediaService _playlistMediaService;
     private readonly INdiReceiverService? _ndiReceiverService;
     private readonly DispatcherQueue _dispatcher;
     private readonly List<PlaylistEntry> _currentEntries = new();
@@ -39,6 +41,9 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
     private ThemePreset? _currentThemePreset;
     private bool _suppressQuickEntryShow;
     private bool _isUpdatingSectionsHighlight;
+    private bool _suppressMediaSeekFeedback;
+    private bool _isUserMediaSeeking;
+    private DispatcherQueueTimer? _mediaSeekWatchdog;
 
     public ObservableCollection<LiveQueueEntry> Queue { get; } = new();
     public ObservableCollection<Playlist> SavedPlaylists { get; } = new();
@@ -61,7 +66,19 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
             return;
         }
 
-        if (value?.Song is null)
+        if (value is null)
+        {
+            IsSelectedQuickEntryMedia = false;
+            SelectedMediaDisplayName = null;
+            return;
+        }
+
+        IsSelectedQuickEntryMedia = value.IsMediaItem;
+        SelectedMediaDisplayName = value.IsMediaItem
+            ? value.DisplayTitle
+            : null;
+
+        if (value.Song is null && !value.IsMediaItem)
         {
             return;
         }
@@ -115,6 +132,33 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
     [ObservableProperty]
     private bool isLoadingNdiSources;
 
+    [ObservableProperty]
+    private bool isSelectedQuickEntryMedia;
+
+    [ObservableProperty]
+    private string? selectedMediaDisplayName;
+
+    [ObservableProperty]
+    private bool isMediaPlaybackActive;
+
+    [ObservableProperty]
+    private bool isMediaPaused = true;
+
+    [ObservableProperty]
+    private bool isMediaLoopEnabled;
+
+    [ObservableProperty]
+    private double mediaPosition;
+
+    [ObservableProperty]
+    private double mediaDuration;
+
+    public string MediaPlayPauseLabel => IsMediaPaused ? "Играть" : "Пауза";
+
+    public string MediaElapsedLabel => FormatMediaClock(MediaPosition);
+
+    public string MediaRemainingLabel => FormatMediaClock(Math.Max(0, MediaDuration - MediaPosition));
+
     public string SongProgressLabel => _currentEntries.Count == 0
         ? "Нет активной песни."
         : $"Песня {CurrentSongIndex + 1} из {_currentEntries.Count}";
@@ -135,10 +179,13 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
     public IRelayCommand<Playlist> LoadSavedPlaylistCommand { get; }
     public IAsyncRelayCommand<Playlist> DeleteSavedPlaylistCommand { get; }
     public IRelayCommand ClearQuickPlaylistCommand { get; }
+    public IRelayCommand<PlaylistEntry> RemoveQuickEntryCommand { get; }
     public IAsyncRelayCommand<string> SaveQuickPlaylistCommand { get; }
     public IRelayCommand ToggleVideoModeCommand { get; }
     public IRelayCommand ToggleNdiVideoModeCommand { get; }
     public IAsyncRelayCommand RefreshNdiSourcesCommand { get; }
+    public IRelayCommand ToggleMediaPlaybackCommand { get; }
+    public IRelayCommand ToggleMediaLoopCommand { get; }
 
     public LiveControlViewModel(
         ICatalogService catalogService,
@@ -147,6 +194,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
         IDisplaySettingsService displaySettingsService,
         ICameraStreamService cameraStreamService,
         IBibleService bibleService,
+        IPlaylistMediaService playlistMediaService,
         INdiReceiverService? ndiReceiverService = null)
     {
         _catalogService = catalogService;
@@ -155,6 +203,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
         _displaySettingsService = displaySettingsService;
         _cameraStreamService = cameraStreamService;
         _bibleService = bibleService;
+        _playlistMediaService = playlistMediaService;
         _ndiReceiverService = ndiReceiverService;
         _dispatcher = App.MainDispatcherQueue ?? DispatcherQueue.GetForCurrentThread() ?? throw new InvalidOperationException("DispatcherQueue недоступен.");
 
@@ -170,10 +219,13 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
         LoadSavedPlaylistCommand = new RelayCommand<Playlist>(LoadPlaylistIntoQuick, playlist => playlist is not null);
         DeleteSavedPlaylistCommand = new AsyncRelayCommand<Playlist>(DeleteSavedPlaylistAsync, playlist => playlist is not null);
         ClearQuickPlaylistCommand = new RelayCommand(ClearQuickPlaylist, () => QuickEntries.Count > 0);
+        RemoveQuickEntryCommand = new RelayCommand<PlaylistEntry>(RemoveQuickEntry, entry => entry is not null);
         SaveQuickPlaylistCommand = new AsyncRelayCommand<string>(SaveQuickPlaylistAsync, name => !string.IsNullOrWhiteSpace(name) && QuickEntries.Count > 0);
         ToggleVideoModeCommand = new RelayCommand(ToggleVideoMode, () => _projectionDisplayService.IsOpen);
         ToggleNdiVideoModeCommand = new RelayCommand(ToggleNdiVideoMode, () => _projectionDisplayService.IsOpen && _ndiReceiverService != null);
         RefreshNdiSourcesCommand = new AsyncRelayCommand(RefreshNdiSourcesAsync, () => _projectionDisplayService.IsOpen && _ndiReceiverService != null);
+        ToggleMediaPlaybackCommand = new RelayCommand(ToggleMediaPlayback, () => IsMediaPlaybackActive);
+        ToggleMediaLoopCommand = new RelayCommand(ToggleMediaLoop, () => IsMediaPlaybackActive);
 
         QuickEntries.CollectionChanged += OnQuickEntriesCollectionChanged;
     }
@@ -197,6 +249,8 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
         _projectionDisplayService.ProjectionWindowVisibilityChanged += OnProjectionVisibilityChanged;
         _projectionDisplayService.BlackoutStateChanged += OnBlackoutStateChanged;
         _projectionDisplayService.NdiModeStateChanged += OnNdiModeStateChanged;
+        _projectionDisplayService.MediaStatusChanged += OnMediaStatusChanged;
+        _projectionDisplayService.MediaPlaybackFailed += OnMediaPlaybackFailed;
         IsProjectionWindowOpen = _projectionDisplayService.IsOpen;
         IsBlackoutEnabled = _projectionDisplayService.IsBlackout;
         IsNdiModeActive = _projectionDisplayService.IsNdiModeActive;
@@ -443,8 +497,375 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
             VisibleLines.Add(line);
         }
 
+        var isVideoMedia = state.IsMedia
+            && _playlistMediaService.IsVideoPath(state.MediaPath);
+        // Транспорт (ползунок) активен, когда на экране/в превью видео — не только после F5.
+        IsMediaPlaybackActive = isVideoMedia;
+        if (!isVideoMedia)
+        {
+            ResetMediaTransportUi();
+        }
+
         UpdateSectionsHighlight(state.SectionIndex);
         NotifySectionProgressChanged();
+    }
+
+    private void OnMediaPlaybackFailed(object? sender, string message)
+    {
+        StatusMessage = message.Contains("unsupported container", StringComparison.OrdinalIgnoreCase)
+            ? "Этот файл не обычный MP4/MKV/AVI (часто MPEG-TS с расширением .mp4). Пересохраните в MP4 (H.264)."
+            : "Видео не воспроизводится — возможно, неподдерживаемый кодек (HEVC, ProRes и т.п.).";
+        ChyguiSlide.Data.InteractionLogger.Log($"LiveControl media failed: {message}");
+    }
+
+    private void OnMediaStatusChanged(object? sender, MediaPlaybackStatus status)
+    {
+        if (!IsMediaPlaybackActive)
+        {
+            return;
+        }
+
+        void Apply()
+        {
+            if (_isUserMediaSeeking)
+            {
+                return;
+            }
+
+            _suppressMediaSeekFeedback = true;
+            try
+            {
+                if (status.DurationSec > 0.05)
+                {
+                    MediaDuration = status.DurationSec;
+                }
+
+                if (MediaDuration <= 0)
+                {
+                    return;
+                }
+
+                MediaPosition = Math.Clamp(status.PositionSec, 0, MediaDuration);
+                IsMediaPaused = status.IsPaused;
+                OnPropertyChanged(nameof(MediaPlayPauseLabel));
+                OnPropertyChanged(nameof(MediaElapsedLabel));
+                OnPropertyChanged(nameof(MediaRemainingLabel));
+            }
+            finally
+            {
+                _suppressMediaSeekFeedback = false;
+            }
+        }
+
+        if (_dispatcher.HasThreadAccess)
+        {
+            Apply();
+        }
+        else
+        {
+            _dispatcher.TryEnqueue(Apply);
+        }
+    }
+
+    private void ResetMediaTransportUi()
+    {
+        IsMediaPlaybackActive = false;
+        IsMediaPaused = true;
+        MediaPosition = 0;
+        MediaDuration = 0;
+        _isUserMediaSeeking = false;
+        OnPropertyChanged(nameof(MediaPlayPauseLabel));
+        OnPropertyChanged(nameof(MediaElapsedLabel));
+        OnPropertyChanged(nameof(MediaRemainingLabel));
+        ToggleMediaPlaybackCommand.NotifyCanExecuteChanged();
+        ToggleMediaLoopCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>Вызывается при уходе со страницы трансляции — гасим MediaPlayer до разбора визуального дерева.</summary>
+    public void StopForegroundMediaForNavigation()
+    {
+        try
+        {
+            _projectionDisplayService.StopForegroundMedia();
+        }
+        catch (Exception ex)
+        {
+            ChyguiSlide.Data.InteractionLogger.Log(
+                $"StopForegroundMediaForNavigation: {ex.Message}");
+        }
+
+        ResetMediaTransportUi();
+    }
+
+    private void ToggleMediaPlayback()
+    {
+        if (!IsMediaPlaybackActive)
+        {
+            return;
+        }
+
+        if (IsMediaPaused)
+        {
+            _projectionDisplayService.MediaPlay();
+            IsMediaPaused = false;
+        }
+        else
+        {
+            _projectionDisplayService.MediaPause();
+            IsMediaPaused = true;
+        }
+
+        OnPropertyChanged(nameof(MediaPlayPauseLabel));
+    }
+
+    private void ScheduleMediaAutoPlayKick()
+    {
+        IsMediaPaused = false;
+        OnPropertyChanged(nameof(MediaPlayPauseLabel));
+
+        void Kick()
+        {
+            if (!IsMediaPlaybackActive || IsMediaPaused)
+            {
+                return;
+            }
+
+            _projectionDisplayService.MediaPlay();
+        }
+
+        Kick();
+        _ = Task.Run(async () =>
+        {
+            foreach (var delayMs in new[] { 120, 400, 900 })
+            {
+                await Task.Delay(delayMs).ConfigureAwait(false);
+                _ = _dispatcher.TryEnqueue(Kick);
+            }
+        });
+    }
+
+    private void ToggleMediaLoop()
+    {
+        IsMediaLoopEnabled = !IsMediaLoopEnabled;
+    }
+
+    partial void OnIsMediaLoopEnabledChanged(bool value)
+    {
+        _projectionDisplayService.MediaSetLoop(value);
+    }
+
+    public void BeginMediaSeek()
+    {
+        _isUserMediaSeeking = true;
+        ArmMediaSeekWatchdog();
+    }
+
+    public void CancelMediaSeek()
+    {
+        StopMediaSeekWatchdog();
+        _isUserMediaSeeking = false;
+    }
+
+    public void PreviewMediaSeek(double positionSec)
+    {
+        if (!IsMediaPlaybackActive)
+        {
+            return;
+        }
+
+        _isUserMediaSeeking = true;
+        ArmMediaSeekWatchdog();
+
+        var clamped = Math.Clamp(positionSec, 0, Math.Max(MediaDuration, 0.01));
+        _suppressMediaSeekFeedback = true;
+        try
+        {
+            MediaPosition = clamped;
+        }
+        finally
+        {
+            _suppressMediaSeekFeedback = false;
+        }
+
+        _projectionDisplayService.MediaSeek(clamped);
+        OnPropertyChanged(nameof(MediaElapsedLabel));
+        OnPropertyChanged(nameof(MediaRemainingLabel));
+    }
+
+    public void EndMediaSeek(double positionSec)
+    {
+        try
+        {
+            if (!IsMediaPlaybackActive)
+            {
+                return;
+            }
+
+            var clamped = Math.Clamp(positionSec, 0, Math.Max(MediaDuration, 0.01));
+            _suppressMediaSeekFeedback = true;
+            try
+            {
+                MediaPosition = clamped;
+            }
+            finally
+            {
+                _suppressMediaSeekFeedback = false;
+            }
+
+            _projectionDisplayService.MediaSeek(clamped);
+            if (!IsMediaPaused)
+            {
+                _projectionDisplayService.MediaPlay();
+            }
+
+            OnPropertyChanged(nameof(MediaElapsedLabel));
+            OnPropertyChanged(nameof(MediaRemainingLabel));
+        }
+        finally
+        {
+            StopMediaSeekWatchdog();
+            _isUserMediaSeeking = false;
+        }
+    }
+
+    private void ArmMediaSeekWatchdog()
+    {
+        if (_mediaSeekWatchdog is null)
+        {
+            _mediaSeekWatchdog = _dispatcher.CreateTimer();
+            _mediaSeekWatchdog.IsRepeating = false;
+            _mediaSeekWatchdog.Tick += (_, _) =>
+            {
+                // DragCompleted иногда не приходит — не блокируем ползунок навсегда.
+                _isUserMediaSeeking = false;
+            };
+        }
+
+        _mediaSeekWatchdog.Stop();
+        _mediaSeekWatchdog.Interval = TimeSpan.FromMilliseconds(450);
+        _mediaSeekWatchdog.Start();
+    }
+
+    private void StopMediaSeekWatchdog()
+    {
+        _mediaSeekWatchdog?.Stop();
+    }
+
+    public void SeekMedia(double positionSec)
+    {
+        if (!IsMediaPlaybackActive || _suppressMediaSeekFeedback || _isUserMediaSeeking)
+        {
+            return;
+        }
+
+        EndMediaSeek(positionSec);
+    }
+
+    partial void OnMediaPositionChanged(double value)
+    {
+        // Перемотка только через Begin/Preview/EndMediaSeek (ползунок OneWay),
+        // чтобы TwoWay/округление Slider не гоняло seek туда-сюда.
+    }
+
+    private static string FormatMediaClock(double seconds)
+    {
+        if (double.IsNaN(seconds) || double.IsInfinity(seconds) || seconds < 0)
+        {
+            seconds = 0;
+        }
+
+        var total = (int)Math.Floor(seconds + 0.0001);
+        var h = total / 3600;
+        var m = (total % 3600) / 60;
+        var s = total % 60;
+        return h > 0 ? $"{h}:{m:D2}:{s:D2}" : $"{m}:{s:D2}";
+    }
+
+    public async Task AddMediaToQuickPlaylistAsync(string sourceFilePath)
+    {
+        if (string.IsNullOrWhiteSpace(sourceFilePath))
+        {
+            return;
+        }
+
+        await AddMediaFilesToQuickPlaylistAsync(new[] { sourceFilePath });
+    }
+
+    public async Task AddMediaFilesToQuickPlaylistAsync(IReadOnlyList<string> sourceFilePaths)
+    {
+        if (sourceFilePaths is null || sourceFilePaths.Count == 0)
+        {
+            return;
+        }
+
+        var added = 0;
+        var failed = new List<string>();
+
+        foreach (var sourceFilePath in sourceFilePaths)
+        {
+            if (string.IsNullOrWhiteSpace(sourceFilePath))
+            {
+                continue;
+            }
+
+            try
+            {
+                var displayName = Path.GetFileName(sourceFilePath);
+                if (string.IsNullOrWhiteSpace(displayName))
+                {
+                    displayName = "Медиафайл";
+                }
+
+                var imported = await _playlistMediaService.ImportAsync(sourceFilePath);
+
+                var songId = Guid.NewGuid();
+                var entry = new PlaylistEntry
+                {
+                    Id = Guid.NewGuid(),
+                    SongId = songId,
+                    Song = new Song
+                    {
+                        Id = songId,
+                        Title = displayName,
+                        Sections = new List<SongSection>()
+                    },
+                    MediaPath = imported,
+                    Order = QuickEntries.Count
+                };
+
+                QuickEntries.Add(entry);
+                added++;
+            }
+            catch (Exception ex)
+            {
+                var name = Path.GetFileName(sourceFilePath);
+                failed.Add(string.IsNullOrWhiteSpace(name) ? sourceFilePath : name);
+                ChyguiSlide.Data.InteractionLogger.Log(
+                    $"AddMediaFilesToQuickPlaylistAsync: {name} — {ex.Message}");
+            }
+        }
+
+        if (added == 0 && failed.Count > 0)
+        {
+            StatusMessage = null;
+            await ErrorDialog.ShowAsync(
+                "Не удалось добавить медиафайлы",
+                new InvalidOperationException(string.Join(", ", failed)));
+            return;
+        }
+
+        if (added == 1 && failed.Count == 0)
+        {
+            StatusMessage = $"«{QuickEntries[^1].DisplayTitle}» добавлен в быстрый плейлист.";
+        }
+        else if (failed.Count == 0)
+        {
+            StatusMessage = $"Добавлено медиафайлов: {added}.";
+        }
+        else
+        {
+            StatusMessage = $"Добавлено: {added}. Не удалось: {failed.Count} ({string.Join(", ", failed)}).";
+        }
     }
 
     partial void OnSelectedEntryChanged(LiveQueueEntry? value)
@@ -472,7 +893,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
 
         foreach (var entry in value.Entries.OrderBy(entry => entry.Order))
         {
-            if (entry.Song is not null)
+            if (entry.Song is not null || entry.IsMediaItem)
             {
                 _currentEntries.Add(entry);
             }
@@ -510,10 +931,13 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
         // Отмечаем выбранную песню как проигранную при открытии трансляции
         try
         {
-            if (SelectedQuickEntry?.SongId != Guid.Empty)
+            if (SelectedQuickEntry is not null)
             {
                 SelectedQuickEntry.WasPlayed = true;
-                _ = RecordPlaySafeAsync(SelectedQuickEntry.SongId);
+                if (!SelectedQuickEntry.IsMediaItem && SelectedQuickEntry.SongId != Guid.Empty)
+                {
+                    _ = RecordPlaySafeAsync(SelectedQuickEntry.SongId);
+                }
             }
         }
         catch
@@ -530,6 +954,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
         IsShowStarted = false;
         IsProjectionCleared = false;
         _projectionStateService.Clear();
+        ResetMediaTransportUi();
         _projectionDisplayService.Hide();
     }
 
@@ -551,6 +976,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
                 IsProjectionCleared = false;
                 _projectionDisplayService.SetBlackout(false);
                 _projectionStateService.Clear();
+                ResetMediaTransportUi();
                 StatusMessage = "Текст убран. Фон остаётся на экране.";
             }
             else
@@ -694,7 +1120,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
             // всегда выкладываем выбранную секцию (после Esc при постоянном фоне
             // SongId уже null, а _currentSections ещё заполнены — старый early-return ничего не делал).
             var entryForShow = ResolveEntryForHotkeyStart();
-            if (entryForShow?.Song is not null)
+            if (entryForShow is not null && (entryForShow.Song is not null || entryForShow.IsMediaItem))
             {
                 // Устанавливаем флаг реального показа ДО вызова ShowSongSectionsAsync
                 IsShowStarted = true;
@@ -706,10 +1132,14 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
                 }
 
                 // Отмечаем песню как проигранную при запуске через горячую клавишу
-                if (entryForShow.SongId != Guid.Empty)
+                if (!entryForShow.IsMediaItem && entryForShow.SongId != Guid.Empty)
                 {
                     entryForShow.WasPlayed = true;
                     _ = RecordPlaySafeAsync(entryForShow.SongId);
+                }
+                else if (entryForShow.IsMediaItem)
+                {
+                    entryForShow.WasPlayed = true;
                 }
 
                 return;
@@ -777,19 +1207,19 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
 
     private PlaylistEntry? ResolveEntryForHotkeyStart()
     {
-        if (SelectedQuickEntry?.Song is not null)
+        if (SelectedQuickEntry is not null && (SelectedQuickEntry.Song is not null || SelectedQuickEntry.IsMediaItem))
         {
             return SelectedQuickEntry;
         }
 
         if (CurrentSongIndex >= 0
             && CurrentSongIndex < _currentEntries.Count
-            && _currentEntries[CurrentSongIndex].Song is not null)
+            && (_currentEntries[CurrentSongIndex].Song is not null || _currentEntries[CurrentSongIndex].IsMediaItem))
         {
             return _currentEntries[CurrentSongIndex];
         }
 
-        return QuickEntries.FirstOrDefault(e => e.Song is not null);
+        return QuickEntries.FirstOrDefault(e => e.Song is not null || e.IsMediaItem);
     }
 
     private int ResolveSectionIndexForHotkeyStart(PlaylistEntry entry)
@@ -1206,6 +1636,8 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
         _projectionDisplayService.ProjectionWindowVisibilityChanged += OnProjectionVisibilityChanged;
         _projectionDisplayService.BlackoutStateChanged += OnBlackoutStateChanged;
         _projectionDisplayService.NdiModeStateChanged += OnNdiModeStateChanged;
+        _projectionDisplayService.MediaStatusChanged += OnMediaStatusChanged;
+        _projectionDisplayService.MediaPlaybackFailed += OnMediaPlaybackFailed;
         IsProjectionWindowOpen = _projectionDisplayService.IsOpen;
         IsBlackoutEnabled = _projectionDisplayService.IsBlackout;
         IsNdiModeActive = _projectionDisplayService.IsNdiModeActive;
@@ -1261,7 +1693,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
             return;
         }
 
-        var title = entry.Song?.Title ?? "Позиция";
+        var title = entry.DisplayTitle;
         var wasSelected = SelectedQuickEntry == entry;
         QuickEntries.Remove(entry);
 
@@ -1271,7 +1703,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
         }
 
         _currentEntries.Clear();
-        foreach (var quick in QuickEntries.Where(e => e.Song is not null).OrderBy(e => e.Order))
+        foreach (var quick in QuickEntries.Where(e => e.Song is not null || e.IsMediaItem).OrderBy(e => e.Order))
         {
             _currentEntries.Add(quick);
         }
@@ -1304,6 +1736,39 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
         StatusMessage = $"«{title}» удалена из быстрого плейлиста.";
     }
 
+    /// <summary>Переименовать медиапункт в быстром плейлисте (только имя в программе, файл на диске не трогаем).</summary>
+    public void RenameQuickMediaEntry(PlaylistEntry entry, string? newTitle)
+    {
+        if (entry is null || !entry.IsMediaItem || entry.Song is null)
+        {
+            return;
+        }
+
+        var title = newTitle?.Trim();
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            return;
+        }
+
+        entry.DisplayTitle = title;
+
+        if (ReferenceEquals(SelectedQuickEntry, entry))
+        {
+            SelectedMediaDisplayName = title;
+        }
+
+        var current = _projectionStateService.Current;
+        if (IsShowStarted
+            && current.IsMedia
+            && current.SongId == entry.SongId
+            && !string.IsNullOrWhiteSpace(entry.MediaPath))
+        {
+            _projectionStateService.SetMedia(entry.MediaPath, title, entry.SongId);
+        }
+
+        StatusMessage = $"Медиафайл переименован в «{title}».";
+    }
+
     public async void ShowSongSections(PlaylistEntry? entry)
     {
         await ShowSongSectionsAsync(entry);
@@ -1311,7 +1776,18 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
 
     public async Task ShowSongSectionsAsync(PlaylistEntry? entry, int startSectionIndex = 0, bool forceShow = false)
     {
-        if (entry?.Song is null)
+        if (entry is null)
+        {
+            return;
+        }
+
+        if (entry.IsMediaItem)
+        {
+            await ShowMediaAsync(entry, forceShow);
+            return;
+        }
+
+        if (entry.Song is null)
         {
             return;
         }
@@ -1329,6 +1805,8 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
         // Очищаем текущие секции
         _currentSections.Clear();
         Sections.Clear();
+        IsSelectedQuickEntryMedia = false;
+        SelectedMediaDisplayName = null;
 
         // Загружаем секции выбранной песни
         var sections = entry.Song.Sections?
@@ -1344,23 +1822,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
 
         // Синхронизируем очередь песен из быстрого плейлиста,
         // чтобы ←/→ могли переходить к соседним песням.
-        if (_currentEntries.Count == 0 && QuickEntries.Count > 0)
-        {
-            foreach (var quick in QuickEntries.Where(e => e.Song is not null).OrderBy(e => e.Order))
-            {
-                _currentEntries.Add(quick);
-            }
-
-            CurrentSongIndex = Math.Max(0, _currentEntries.FindIndex(e => e.SongId == entry.SongId));
-        }
-        else if (_currentEntries.Count > 0)
-        {
-            var idx = _currentEntries.FindIndex(e => e.SongId == entry.SongId);
-            if (idx >= 0)
-            {
-                CurrentSongIndex = idx;
-            }
-        }
+        SyncCurrentEntriesFromQuick(entry);
 
         // Индексы секций в UI и в проекторе совпадают (полный список по Order)
         var contentSegments = sections
@@ -1388,6 +1850,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
         var current = _projectionStateService.Current;
         var alreadyOnScreen = current.SongId == entry.SongId
             && current.SectionIndex == initialIndex
+            && current.ContentKind != ProjectionContentKind.Media
             && current.VisibleLines.Count > 0;
 
         System.Diagnostics.Debug.WriteLine($"ShowSongSectionsAsync: current.SongId={current.SongId}, entry.SongId={entry.SongId}, current.SectionIndex={current.SectionIndex}, initialIndex={initialIndex}, current.VisibleLines.Count={current.VisibleLines.Count}, alreadyOnScreen={alreadyOnScreen}");
@@ -1460,6 +1923,100 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
         NotifySongProgressChanged();
     }
 
+    private async Task ShowMediaAsync(PlaylistEntry entry, bool forceShow = false)
+    {
+        var path = _playlistMediaService.ResolveExistingPath(entry.MediaPath);
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            StatusMessage = "Медиафайл не найден.";
+            return;
+        }
+
+        entry.MediaPath = path;
+        var title = entry.Song?.Title ?? _playlistMediaService.GetDisplayName(path) ?? "Медиафайл";
+
+        _currentSections.Clear();
+        Sections.Clear();
+        IsSelectedQuickEntryMedia = true;
+        SelectedMediaDisplayName = title;
+        SyncCurrentEntriesFromQuick(entry);
+
+        // Только выбор в списке — без SetMedia / без звука и картинки.
+        // Воспроизведение только по «Начать показ» / hotkey (forceShow) или если показ уже идёт.
+        if (!forceShow && !IsShowStarted)
+        {
+            ResetMediaTransportUi();
+            StatusMessage = $"Медиафайл «{title}» выбран.";
+            NotifySectionProgressChanged();
+            NotifySongProgressChanged();
+            return;
+        }
+
+        var current = _projectionStateService.Current;
+        if (current.IsMedia
+            && current.SongId == entry.SongId
+            && string.Equals(current.MediaPath, path, StringComparison.OrdinalIgnoreCase))
+        {
+            IsMediaPlaybackActive = _playlistMediaService.IsVideoPath(path);
+            IsMediaPaused = false;
+            ToggleMediaPlaybackCommand.NotifyCanExecuteChanged();
+            ToggleMediaLoopCommand.NotifyCanExecuteChanged();
+            OnPropertyChanged(nameof(MediaPlayPauseLabel));
+            _projectionDisplayService.EnsureContentVisible();
+            _projectionDisplayService.MediaSetLoop(IsMediaLoopEnabled);
+            ScheduleMediaAutoPlayKick();
+            StatusMessage = $"Медиафайл «{title}» на экране.";
+            NotifySongProgressChanged();
+            return;
+        }
+
+        _projectionStateService.SetPlaylistContext(null);
+        _projectionStateService.SetMedia(path, title, entry.SongId);
+
+        if (!_projectionDisplayService.IsOpen && _currentThemePreset is not null)
+        {
+            _projectionDisplayService.ApplyTheme(_currentThemePreset);
+        }
+        else if (!_projectionDisplayService.IsOpen)
+        {
+            await LoadThemeFromSettingsAsync();
+        }
+
+        entry.WasPlayed = true;
+        IsMediaPlaybackActive = _playlistMediaService.IsVideoPath(path);
+        IsMediaPaused = false;
+        ToggleMediaPlaybackCommand.NotifyCanExecuteChanged();
+        ToggleMediaLoopCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(MediaPlayPauseLabel));
+        _projectionDisplayService.MediaSetLoop(IsMediaLoopEnabled);
+        ScheduleMediaAutoPlayKick();
+
+        StatusMessage = $"Медиафайл «{title}» на экране.";
+        NotifySectionProgressChanged();
+        NotifySongProgressChanged();
+    }
+
+    private void SyncCurrentEntriesFromQuick(PlaylistEntry entry)
+    {
+        if (_currentEntries.Count == 0 && QuickEntries.Count > 0)
+        {
+            foreach (var quick in QuickEntries.Where(e => e.Song is not null || e.IsMediaItem).OrderBy(e => e.Order))
+            {
+                _currentEntries.Add(quick);
+            }
+
+            CurrentSongIndex = Math.Max(0, _currentEntries.FindIndex(e => e.SongId == entry.SongId));
+        }
+        else if (_currentEntries.Count > 0)
+        {
+            var idx = _currentEntries.FindIndex(e => e.SongId == entry.SongId);
+            if (idx >= 0)
+            {
+                CurrentSongIndex = idx;
+            }
+        }
+    }
+
     public void SyncQuickPlaylistOrderFromUi()
     {
         for (var i = 0; i < QuickEntries.Count; i++)
@@ -1470,7 +2027,7 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
         if (_currentEntries.Count > 0)
         {
             _currentEntries.Clear();
-            foreach (var quick in QuickEntries.Where(e => e.Song is not null).OrderBy(e => e.Order))
+            foreach (var quick in QuickEntries.Where(e => e.Song is not null || e.IsMediaItem).OrderBy(e => e.Order))
             {
                 _currentEntries.Add(quick);
             }
@@ -1517,6 +2074,16 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
 
             foreach (var entry in QuickEntries)
             {
+                if (entry.IsMediaItem)
+                {
+                    if (!string.IsNullOrWhiteSpace(entry.Song?.Title))
+                    {
+                        skippedTitles.Add(entry.Song.Title);
+                    }
+
+                    continue;
+                }
+
                 var song = await _catalogService.GetSongAsync(entry.SongId);
                 if (song is not null)
                 {
@@ -1730,6 +2297,20 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
         {
             IsBlackoutEnabled = false;
         }
+
+        if (!value)
+        {
+            ResetMediaTransportUi();
+        }
+        else if (CurrentState.IsMedia && _playlistMediaService.IsVideoPath(CurrentState.MediaPath))
+        {
+            IsMediaPlaybackActive = true;
+            ToggleMediaPlaybackCommand.NotifyCanExecuteChanged();
+            ToggleMediaLoopCommand.NotifyCanExecuteChanged();
+            _projectionDisplayService.MediaSetLoop(IsMediaLoopEnabled);
+            ScheduleMediaAutoPlayKick();
+        }
+
         OpenProjectionCommand.NotifyCanExecuteChanged();
         ClearProjectionCommand.NotifyCanExecuteChanged();
         RestoreProjectionCommand.NotifyCanExecuteChanged();
@@ -1760,6 +2341,29 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
     private void AdvanceOrNextSong()
     {
         RestoreProjectionIfCleared();
+
+        // Медиа — один «слайд»: следующий элемент плейлиста или завершение показа
+        if (CurrentState.IsMedia || SelectedQuickEntry?.IsMediaItem == true)
+        {
+            if (_currentEntries.Count == 0 && QuickEntries.Count > 0)
+            {
+                var anchor = SelectedQuickEntry ?? QuickEntries[0];
+                SyncCurrentEntriesFromQuick(anchor);
+            }
+
+            if (CurrentSongIndex < _currentEntries.Count - 1)
+            {
+                _ = MoveToEntryAsync(CurrentSongIndex + 1);
+            }
+            else if (_projectionDisplayService.IsOpen)
+            {
+                _ = EndShowAsync();
+            }
+
+            NotifySectionProgressChanged();
+            return;
+        }
+
         // Источник истины — состояние проекции; локальный список может быть пуст
         // (например, песня выбрана до инициализации LiveControl).
         var sectionCount = _currentSections.Count > 0
@@ -1808,6 +2412,24 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
     private async Task RewindOrPreviousSongAsync()
     {
         RestoreProjectionIfCleared();
+
+        if (CurrentState.IsMedia || SelectedQuickEntry?.IsMediaItem == true)
+        {
+            if (_currentEntries.Count == 0 && QuickEntries.Count > 0)
+            {
+                var anchor = SelectedQuickEntry ?? QuickEntries[0];
+                SyncCurrentEntriesFromQuick(anchor);
+            }
+
+            if (CurrentSongIndex > 0)
+            {
+                await MoveToEntryAsync(CurrentSongIndex - 1, startFromLastSection: true);
+            }
+
+            NotifySectionProgressChanged();
+            return;
+        }
+
         if (_currentSections.Count == 0)
         {
             _projectionStateService.PreviousSection();
@@ -1883,16 +2505,30 @@ public sealed partial class LiveControlViewModel : ObservableRecipient
         }
 
         var entry = _currentEntries[targetIndex];
+        CurrentSongIndex = targetIndex;
+
+        _suppressQuickEntryShow = true;
+        SelectedQuickEntry = entry;
+        _suppressQuickEntryShow = false;
+
+        if (entry.IsMediaItem)
+        {
+            // Не стартуем из‑за открытого окна проектора — только если показ уже идёт.
+            await ShowMediaAsync(entry, forceShow: IsShowStarted);
+            return;
+        }
+
         if (entry.Song is null)
         {
             return;
         }
 
-        CurrentSongIndex = targetIndex;
         StatusMessage = $"Песня «{entry.Song.Title}» готова к показу.";
 
         _currentSections.Clear();
         Sections.Clear();
+        IsSelectedQuickEntryMedia = false;
+        SelectedMediaDisplayName = null;
 
         var sections = entry.Song.Sections
             .OrderBy(section => section.Order)

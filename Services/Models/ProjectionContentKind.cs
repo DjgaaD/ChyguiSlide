@@ -4,5 +4,6 @@ public enum ProjectionContentKind
 {
     Song = 0,
     Bible = 1,
-    Announcement = 2
+    Announcement = 2,
+    Media = 3
 }

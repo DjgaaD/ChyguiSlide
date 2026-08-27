@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
 using ChyguiSlide.Controls;
 using ChyguiSlide.Data.Entities;
 using ChyguiSlide.Services.Abstractions;
@@ -30,6 +31,7 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
     private readonly IDisplaySettingsService _displaySettingsService;
     private readonly ICatalogService _catalogService;
     private readonly ICameraStreamService _cameraStreamService;
+    private readonly IPlaylistMediaService _playlistMediaService;
     private readonly INdiReceiverService? _ndiReceiverService;
     private readonly DispatcherQueue _dispatcher;
     private readonly HotkeyDispatcher _hotkeyDispatcher;
@@ -42,7 +44,12 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
     private NdiVideoRenderer? _ndiVideoRenderer;
     private DispatcherQueueTimer? _topMostTimer;
     private IntPtr _projectionHwnd;
-    private string? _syncedBackgroundVideoPath;
+    private string? _syncedForegroundMediaPath;
+    private readonly SemaphoreSlim _foregroundMediaSync = new(1, 1);
+    private int _foregroundMediaSyncQueued;
+    private int _foregroundMediaDrainRunning;
+    private bool _foregroundUsesWebFallback;
+    private string? _webFallbackPath;
 
     private static readonly IntPtr HwndTopMost = new(-1);
     private const uint SwpNomove = 0x0002;
@@ -73,10 +80,11 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
         int cbAttribute);
 
     public ProjectionDisplayService(
-        IServiceProvider serviceProvider, 
-        IDisplaySettingsService displaySettingsService, 
+        IServiceProvider serviceProvider,
+        IDisplaySettingsService displaySettingsService,
         ICatalogService catalogService,
         ICameraStreamService cameraStreamService,
+        IPlaylistMediaService playlistMediaService,
         HotkeyDispatcher hotkeyDispatcher,
         INdiReceiverService? ndiReceiverService = null)
     {
@@ -84,6 +92,7 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
         _displaySettingsService = displaySettingsService;
         _catalogService = catalogService;
         _cameraStreamService = cameraStreamService;
+        _playlistMediaService = playlistMediaService;
         _hotkeyDispatcher = hotkeyDispatcher;
         _ndiReceiverService = ndiReceiverService;
         _dispatcher = App.MainDispatcherQueue;
@@ -97,6 +106,8 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
     public event EventHandler<bool>? ProjectionWindowVisibilityChanged;
     public event EventHandler<bool>? BlackoutStateChanged;
     public event EventHandler<bool>? NdiModeStateChanged;
+    public event EventHandler<MediaPlaybackStatus>? MediaStatusChanged;
+    public event EventHandler<string>? MediaPlaybackFailed;
 
     public async Task ShowAsync()
     {
@@ -118,10 +129,15 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
         _viewModel ??= _serviceProvider.GetRequiredService<ProjectionDisplayViewModel>();
         _windowWeb = ActivatorUtilities.CreateInstance<ProjectionWindowWeb>(_serviceProvider, _viewModel);
         _windowWeb.Closed += OnWindowClosed;
+        _windowWeb.ForegroundMedia.PlaybackFailed += OnPreviewForegroundMediaFailed;
+        _windowWeb.AdapterReady += OnProjectionAdapterReady;
 
         // Сбрасываем syncedBackgroundVideoPath при открытии нового окна
         var keepBackground = await _displaySettingsService.GetKeepProjectionBackgroundAsync();
-        _syncedBackgroundVideoPath = null;
+        _syncedForegroundMediaPath = null;
+        _foregroundUsesWebFallback = false;
+        _webFallbackPath = null;
+        EnsureBackgroundMediaSubscription(_viewModel);
 
         // Тема и раскладка до Activate
         System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] ShowWebWindowAsync: Before ApplySavedThemeAsync");
@@ -178,6 +194,8 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
             _viewModel?.EnsureContentVisible();
         }
 
+        await SyncForegroundMediaAsync();
+
         ProjectionWindowVisibilityChanged?.Invoke(this, true);
     }
 
@@ -208,7 +226,7 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
                 _previewStage.ApplyOutputSize(width, height);
                 _viewModel?.EnsureContentVisible();
                 _previewStage.SyncNow();
-                _ = SyncThemeBackgroundVideoAsync();
+                await SyncForegroundMediaAsync();
             }
             else if (_previewStage?.Parent is Panel parent)
             {
@@ -350,17 +368,29 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
         StopTopMostKeeper();
         _hotkeyDispatcher.DetachProjection();
         window.Closed -= OnWindowClosed;
+        window.AdapterReady -= OnProjectionAdapterReady;
         window.DisposeAdapter();
 
         if (_viewModel is not null)
         {
-            _viewModel.BackgroundMediaChanged -= OnBackgroundMediaChanged;
+            _viewModel.ForegroundMediaChanged -= OnForegroundMediaChanged;
         }
 
-        _syncedBackgroundVideoPath = null;
+        _syncedForegroundMediaPath = null;
+        ClearWebForegroundFallback();
+        _previewStage?.ForegroundMedia.Hide();
         _windowWeb = null;
         // Не обнуляем _viewModel и _previewStage — они используются для превью
-        window.Close();
+        try
+        {
+            window.Close();
+        }
+        catch (Exception ex)
+        {
+            ChyguiSlide.Data.InteractionLogger.Log(
+                $"HideWebWindowAsync: window.Close failed: {ex.Message}");
+        }
+
         ProjectionWindowVisibilityChanged?.Invoke(this, false);
 
         try
@@ -407,7 +437,7 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
                 _viewModel ??= _serviceProvider.GetRequiredService<ProjectionDisplayViewModel>();
                 EnsureBackgroundMediaSubscription(_viewModel);
                 _viewModel.ApplyTheme(theme, startNewBackgroundSession);
-                await SyncThemeBackgroundVideoAsync();
+                // Фон темы — только через WebView (WebProjectionAdapter), без native MediaPlayer.
             }
             catch (Exception ex)
             {
@@ -419,174 +449,475 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
 
     private void EnsureBackgroundMediaSubscription(ProjectionDisplayViewModel viewModel)
     {
-        viewModel.BackgroundMediaChanged -= OnBackgroundMediaChanged;
-        viewModel.BackgroundMediaChanged += OnBackgroundMediaChanged;
+        viewModel.ForegroundMediaChanged -= OnForegroundMediaChanged;
+        viewModel.ForegroundMediaChanged += OnForegroundMediaChanged;
+
+        if (_previewStage is not null)
+        {
+            _previewStage.ForegroundMediaStatusChanged -= OnPreviewForegroundMediaStatusChanged;
+            _previewStage.ForegroundMediaStatusChanged += OnPreviewForegroundMediaStatusChanged;
+            _previewStage.ForegroundMedia.PlaybackFailed -= OnPreviewForegroundMediaFailed;
+            _previewStage.ForegroundMedia.PlaybackFailed += OnPreviewForegroundMediaFailed;
+        }
     }
 
-    private void OnBackgroundMediaChanged(object? sender, EventArgs e)
+    private void OnProjectionAdapterReady(object? sender, EventArgs e)
     {
-        _ = RunOnDispatcherAsync(async () => await SyncThemeBackgroundVideoAsync());
+        _ = RunOnDispatcherAsync(async () =>
+        {
+            // Sync мог пройти до NavigationCompleted — дожимаем видео и подписку статуса.
+            if (_foregroundUsesWebFallback
+                && !string.IsNullOrWhiteSpace(_webFallbackPath)
+                && _playlistMediaService.IsWebViewPlayableVideo(_webFallbackPath))
+            {
+                EnsureWebPlaylistMediaShown(_webFallbackPath, _viewModel?.MediaLoopEnabled ?? false);
+                EnsureWebFallbackStatusSubscription();
+                _windowWeb?.Adapter?.MediaPlay();
+                return;
+            }
+
+            await SyncForegroundMediaAsync().ConfigureAwait(true);
+        });
     }
 
-    private async Task SyncThemeBackgroundVideoAsync()
+    private void OnPreviewForegroundMediaFailed(object? sender, string message)
+    {
+        _ = RunOnDispatcherAsync(async () =>
+        {
+            await _foregroundMediaSync.WaitAsync().ConfigureAwait(true);
+            try
+            {
+                TryFallbackForegroundMediaToWeb(message);
+            }
+            finally
+            {
+                _foregroundMediaSync.Release();
+            }
+        });
+    }
+
+    private void TryFallbackForegroundMediaToWeb(string nativeError)
     {
         if (_viewModel is null)
         {
-            System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] _viewModel is null, returning");
-            ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: _viewModel is null, returning");
+            MediaPlaybackFailed?.Invoke(this, nativeError);
             return;
         }
 
-        var players = new MediaPlayerElement?[]
-        {
-            _previewStage?.BackgroundVideoPlayerElement
-        };
-
-        System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] IsBackgroundVideoVisible={_viewModel.IsBackgroundVideoVisible}, BackgroundVideoPath={_viewModel.BackgroundVideoPath}");
-        ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: IsBackgroundVideoVisible={_viewModel.IsBackgroundVideoVisible}, BackgroundVideoPath={_viewModel.BackgroundVideoPath}");
-
-        var desiredPath = _viewModel.IsBackgroundVideoVisible
-            && !string.IsNullOrWhiteSpace(_viewModel.BackgroundVideoPath)
-            && File.Exists(_viewModel.BackgroundVideoPath)
-            ? _viewModel.BackgroundVideoPath
+        var path = _viewModel.ContentKind == ProjectionContentKind.Media
+            ? _playlistMediaService.ResolveExistingPath(_viewModel.MediaPath) ?? _viewModel.MediaPath
             : null;
 
-        System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] desiredPath={desiredPath}, _syncedBackgroundVideoPath={_syncedBackgroundVideoPath}");
-        ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: desiredPath={desiredPath}, _syncedBackgroundVideoPath={_syncedBackgroundVideoPath}");
-
-        // Проверяем, есть ли плееры без источника видео (например, только что созданный плеер превью)
-        var hasPlayerWithoutSource = players.Any(p => p?.Source is null);
-        System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] hasPlayerWithoutSource={hasPlayerWithoutSource}");
-        ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: hasPlayerWithoutSource={hasPlayerWithoutSource}");
-
-        // Если путь не изменился, не перезапускаем видео в плеерах, которые уже имеют источник.
-        // Но устанавливаем видео в плеерах без источника (превью).
-        // Это предотвращает мерцание при первом запуске показа с постоянным фоном,
-        // но гарантирует, что превью получит видео.
-        var pathUnchanged = string.Equals(_syncedBackgroundVideoPath, desiredPath, StringComparison.OrdinalIgnoreCase);
-
-        System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] pathUnchanged={pathUnchanged}");
-        ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: pathUnchanged={pathUnchanged}");
-
-        if (pathUnchanged)
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
         {
-            System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] Path unchanged, setting video only for players without source");
-            ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: Path unchanged, setting video only for players without source");
-
-            // Устанавливаем видео только в плеерах без источника
-            if (desiredPath is not null)
-            {
-                foreach (var p in players)
-                {
-                    if (p?.Source is null && p?.MediaPlayer is not null)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] Setting source for player without source");
-                        ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: Setting source for player without source");
-                        var mediaPlayer = p.MediaPlayer ?? new MediaPlayer();
-                        mediaPlayer.IsLoopingEnabled = _viewModel.LoopBackgroundMedia;
-                        mediaPlayer.IsMuted = true;
-                        mediaPlayer.AutoPlay = true;
-                        mediaPlayer.CommandManager.IsEnabled = false;
-                        if (p.MediaPlayer is null)
-                        {
-                            p.SetMediaPlayer(mediaPlayer);
-                        }
-
-                        var storageFile = await global::Windows.Storage.StorageFile.GetFileFromPathAsync(desiredPath);
-                        p.Source = MediaSource.CreateFromStorageFile(storageFile);
-                        mediaPlayer.Play();
-                        System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] Source set and play called for player without source");
-                        ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: Source set and play called for player without source");
-                    }
-                    else if (p?.MediaPlayer is not null)
-                    {
-                        p.MediaPlayer.IsLoopingEnabled = _viewModel.LoopBackgroundMedia;
-                    }
-                }
-            }
-
+            MediaPlaybackFailed?.Invoke(this, nativeError);
             return;
         }
 
-        System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] Path changed, setting new video source");
-        ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: Path changed, setting new video source");
-
-        // Очищаем предыдущие источники у всех плееров
-        foreach (var p in players)
+        // MPEG-TS и пр. WebView не откроет — не уходим в чёрный showMedia.
+        if (!_playlistMediaService.IsWebViewPlayableVideo(path))
         {
-            if (p is null)
-            {
-                continue;
-            }
-
-            try
-            {
-                p.Source = null;
-                p.MediaPlayer?.Pause();
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] Clear background video (preview/stage/window): {ex.Message}");
-            }
-        }
-
-        _syncedBackgroundVideoPath = null;
-
-        if (desiredPath is null)
-        {
-            System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] desiredPath is null, returning");
-            ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: desiredPath is null, returning");
+            MediaPlaybackFailed?.Invoke(this, nativeError);
             return;
         }
 
-        System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] Setting video source for {players.Length} players");
-        ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: Setting video source for {players.Length} players");
+        if (_foregroundUsesWebFallback
+            && string.Equals(_webFallbackPath, path, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var isVideo = _playlistMediaService.IsVideoPath(path);
+        var loop = _viewModel.MediaLoopEnabled;
+
+        ChyguiSlide.Data.InteractionLogger.Log(
+            $"SyncForegroundMediaAsync: native failed, WebView fallback for {Path.GetFileName(path)} ({nativeError})");
+
+        _previewStage?.ForegroundMedia.Hide();
+        _windowWeb?.ForegroundMedia.Hide();
+
+        _windowWeb?.ShowWebPlaylistMedia(path, isVideo, loop);
+        _previewStage?.ShowWebPlaylistMedia(path, isVideo, loop);
+
+        _foregroundUsesWebFallback = true;
+        _webFallbackPath = path;
+        _syncedForegroundMediaPath = path;
+
+        EnsureWebFallbackStatusSubscription();
+
+        if (isVideo)
+        {
+            _windowWeb?.Adapter?.MediaPlay();
+            _previewStage?.Adapter?.MediaPlay();
+        }
+    }
+
+    private void EnsureWebPlaylistMediaShown(string path, bool loop)
+    {
+        _windowWeb?.ShowWebPlaylistMedia(path, isVideo: true, loop);
+        _previewStage?.ShowWebPlaylistMedia(path, isVideo: true, loop);
+    }
+
+    private async Task ShowNativePlaylistVideoAsync(string path, bool loop)
+    {
+        ChyguiSlide.Data.InteractionLogger.Log(
+            $"SyncForegroundMediaAsync: native video {Path.GetFileName(path)}");
+
+        _foregroundUsesWebFallback = false;
+        _webFallbackPath = null;
+
+        // WebView: чёрный слой без темы. Поверх XAML — MediaPlayerElement.
+        _windowWeb?.ShowWebMediaCover();
+        _previewStage?.ShowWebMediaCover();
 
         try
         {
-            // Устанавливаем источник для каждого плеера отдельно (независимые MediaPlayer)
-            foreach (var p in players)
+            if (_windowWeb is not null)
             {
-                if (p is null)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] Player is null, skipping");
-                    ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: Player is null, skipping");
-                    continue;
-                }
-
-                try
-                {
-                    System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] Setting source for player");
-                    ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: Setting source for player");
-                    var mediaPlayer = p.MediaPlayer ?? new MediaPlayer();
-                    mediaPlayer.IsLoopingEnabled = _viewModel.LoopBackgroundMedia;
-                    mediaPlayer.IsMuted = true;
-                    mediaPlayer.AutoPlay = true;
-                    mediaPlayer.CommandManager.IsEnabled = false;
-                    if (p.MediaPlayer is null)
-                    {
-                        p.SetMediaPlayer(mediaPlayer);
-                    }
-
-                    var storageFile = await global::Windows.Storage.StorageFile.GetFileFromPathAsync(desiredPath);
-                    p.Source = MediaSource.CreateFromStorageFile(storageFile);
-                    mediaPlayer.Play();
-                    System.Diagnostics.Debug.WriteLine($"[SyncThemeBackgroundVideoAsync] Source set and play called");
-                    ChyguiSlide.Data.InteractionLogger.Log($"SyncThemeBackgroundVideoAsync: Source set and play called");
-                }
-                catch (Exception exInner)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] Background video error for a player: {exInner.Message}");
-                }
+                await _windowWeb.ForegroundMedia.ShowAsync(path, isVideo: true, loop, autoPlay: true)
+                    .ConfigureAwait(true);
             }
 
-            _syncedBackgroundVideoPath = desiredPath;
-            System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] Background video set for players: {desiredPath}");
+            if (_previewStage is not null)
+            {
+                await _previewStage.ForegroundMedia.ShowAsync(path, isVideo: true, loop, autoPlay: true)
+                    .ConfigureAwait(true);
+            }
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[ProjectionDisplay] Background video error: {ex.Message}");
+            ChyguiSlide.Data.InteractionLogger.Log(
+                $"SyncForegroundMediaAsync: native video ShowAsync failed: {ex.Message}");
+            MediaPlaybackFailed?.Invoke(this, $"native video ShowAsync failed: {ex.Message}");
         }
+    }
+
+    private void EnsureWebFallbackStatusSubscription()
+    {
+        if (_windowWeb?.Adapter is not null)
+        {
+            _windowWeb.Adapter.MediaStatusChanged -= OnWebFallbackMediaStatusChanged;
+            _windowWeb.Adapter.MediaStatusChanged += OnWebFallbackMediaStatusChanged;
+        }
+
+        if (_previewStage?.Adapter is not null)
+        {
+            _previewStage.Adapter.MediaStatusChanged -= OnWebFallbackMediaStatusChanged;
+            _previewStage.Adapter.MediaStatusChanged += OnWebFallbackMediaStatusChanged;
+        }
+    }
+
+    private void OnWebFallbackMediaStatusChanged(object? sender, MediaPlaybackStatus status)
+    {
+        if (!_foregroundUsesWebFallback)
+        {
+            return;
+        }
+
+        // Один источник «часов»: окно проекции, если уже есть; иначе превью.
+        if (_windowWeb?.Adapter is not null
+            && !ReferenceEquals(sender, _windowWeb.Adapter))
+        {
+            return;
+        }
+
+        MediaStatusChanged?.Invoke(this, status);
+    }
+
+    private void ClearWebForegroundFallback()
+    {
+        _foregroundUsesWebFallback = false;
+        _webFallbackPath = null;
+        _windowWeb?.HideWebPlaylistMedia();
+        _previewStage?.HideWebPlaylistMedia();
+        if (_windowWeb?.Adapter is not null)
+        {
+            _windowWeb.Adapter.MediaStatusChanged -= OnWebFallbackMediaStatusChanged;
+        }
+
+        if (_previewStage?.Adapter is not null)
+        {
+            _previewStage.Adapter.MediaStatusChanged -= OnWebFallbackMediaStatusChanged;
+        }
+    }
+
+    private void OnForegroundMediaChanged(object? sender, EventArgs e)
+    {
+        ScheduleForegroundMediaSync();
+    }
+
+    /// <summary>
+    /// Coalesce overlapping ForegroundMediaChanged storms into one drain loop.
+    /// </summary>
+    private void ScheduleForegroundMediaSync()
+    {
+        Interlocked.Exchange(ref _foregroundMediaSyncQueued, 1);
+        if (Interlocked.CompareExchange(ref _foregroundMediaDrainRunning, 1, 0) != 0)
+        {
+            return;
+        }
+
+        _ = RunOnDispatcherAsync(DrainForegroundMediaSyncAsync);
+    }
+
+    private async Task DrainForegroundMediaSyncAsync()
+    {
+        try
+        {
+            while (Interlocked.Exchange(ref _foregroundMediaSyncQueued, 0) != 0)
+            {
+                await SyncForegroundMediaAsync().ConfigureAwait(true);
+            }
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _foregroundMediaDrainRunning, 0);
+            if (Interlocked.CompareExchange(ref _foregroundMediaSyncQueued, 0, 0) != 0)
+            {
+                ScheduleForegroundMediaSync();
+            }
+        }
+    }
+
+    private void OnPreviewForegroundMediaStatusChanged(object? sender, MediaPlaybackStatus status)
+    {
+        MediaStatusChanged?.Invoke(this, status);
+    }
+
+    private async Task SyncForegroundMediaAsync()
+    {
+        await _foregroundMediaSync.WaitAsync().ConfigureAwait(true);
+        try
+        {
+            if (_viewModel is null)
+            {
+                return;
+            }
+
+            string? path = _viewModel.ContentKind == ProjectionContentKind.Media
+                ? _viewModel.MediaPath
+                : null;
+
+            if (!string.IsNullOrWhiteSpace(path))
+            {
+                path = _playlistMediaService.ResolveExistingPath(path) ?? path;
+                if (!File.Exists(path))
+                {
+                    path = null;
+                }
+            }
+
+            var loop = _viewModel.MediaLoopEnabled;
+
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                _syncedForegroundMediaPath = null;
+                ClearWebForegroundFallback();
+                _previewStage?.ForegroundMedia.Hide();
+                _windowWeb?.ForegroundMedia.Hide();
+                return;
+            }
+
+            var isVideo = _playlistMediaService.IsVideoPath(path);
+            var isImage = _playlistMediaService.IsImagePath(path);
+            if (!isVideo && !isImage)
+            {
+                ChyguiSlide.Data.InteractionLogger.Log(
+                    $"SyncForegroundMediaAsync: unsupported media type {Path.GetFileName(path)}");
+                return;
+            }
+
+            if (string.Equals(_syncedForegroundMediaPath, path, StringComparison.OrdinalIgnoreCase))
+            {
+                if (_foregroundUsesWebFallback)
+                {
+                    if (isVideo && !_playlistMediaService.IsWebViewPlayableVideo(path))
+                    {
+                        // Ранее ошибочно ушли в web cover — поднимаем native.
+                        await ShowNativePlaylistVideoAsync(path, loop).ConfigureAwait(true);
+                        return;
+                    }
+
+                    EnsureWebFallbackStatusSubscription();
+                    EnsureWebPlaylistMediaShown(path, loop);
+                    if (isVideo)
+                    {
+                        _windowWeb?.Adapter?.MediaPlay();
+                        _previewStage?.Adapter?.MediaPlay();
+                    }
+
+                    return;
+                }
+
+                _previewStage?.ForegroundMedia.SetLoop(loop);
+                _windowWeb?.ForegroundMedia.SetLoop(loop);
+                if (isVideo)
+                {
+                    _windowWeb?.ForegroundMedia.Play();
+                    _previewStage?.ForegroundMedia.Play();
+                }
+
+                return;
+            }
+
+            ClearWebForegroundFallback();
+            _syncedForegroundMediaPath = path;
+
+            // Настоящий MP4/WebM — WebView. Прочие контейнеры (часто MPEG-TS с расширением .mp4) —
+            // нативный MediaPlayer (WebView даёт чёрный экран / code=4).
+            // Фото — нативный Image. Стили темы для медиа не применяются (адаптер).
+            if (isVideo)
+            {
+                if (_playlistMediaService.IsWebViewPlayableVideo(path))
+                {
+                    ChyguiSlide.Data.InteractionLogger.Log(
+                        $"SyncForegroundMediaAsync: WebView video {Path.GetFileName(path)}");
+                    _previewStage?.ForegroundMedia.Hide();
+                    _windowWeb?.ForegroundMedia.Hide();
+                    _foregroundUsesWebFallback = true;
+                    _webFallbackPath = path;
+                    EnsureWebPlaylistMediaShown(path, loop);
+                    EnsureWebFallbackStatusSubscription();
+                    _windowWeb?.Adapter?.MediaPlay();
+                    _previewStage?.Adapter?.MediaPlay();
+                    return;
+                }
+
+                await ShowNativePlaylistVideoAsync(path, loop).ConfigureAwait(true);
+                return;
+            }
+
+            ChyguiSlide.Data.InteractionLogger.Log(
+                $"SyncForegroundMediaAsync: native image {Path.GetFileName(path)}");
+
+            try
+            {
+                _windowWeb?.HideWebPlaylistMedia();
+                _previewStage?.HideWebPlaylistMedia();
+
+                if (_windowWeb is not null)
+                {
+                    await _windowWeb.ForegroundMedia.ShowAsync(path, isVideo: false, loop, autoPlay: false)
+                        .ConfigureAwait(true);
+                }
+
+                if (_previewStage is not null)
+                {
+                    await _previewStage.ForegroundMedia.ShowAsync(path, isVideo: false, loop, autoPlay: false)
+                        .ConfigureAwait(true);
+                }
+            }
+            catch (Exception ex)
+            {
+                ChyguiSlide.Data.InteractionLogger.Log(
+                    $"SyncForegroundMediaAsync: image ShowAsync failed: {ex.Message}");
+                TryFallbackForegroundMediaToWeb($"image ShowAsync failed: {ex.Message}");
+            }
+        }
+        finally
+        {
+            _foregroundMediaSync.Release();
+        }
+    }
+
+    public void MediaPlay()
+    {
+        _ = RunOnDispatcherAsync(() =>
+        {
+            if (_foregroundUsesWebFallback)
+            {
+                _windowWeb?.Adapter?.MediaPlay();
+                _previewStage?.Adapter?.MediaPlay();
+            }
+            else
+            {
+                _windowWeb?.MediaPlay();
+                _previewStage?.MediaPlay();
+            }
+
+            return Task.CompletedTask;
+        });
+    }
+
+    public void MediaPause()
+    {
+        _ = RunOnDispatcherAsync(() =>
+        {
+            if (_foregroundUsesWebFallback)
+            {
+                _windowWeb?.Adapter?.MediaPause();
+                _previewStage?.Adapter?.MediaPause();
+            }
+            else
+            {
+                _windowWeb?.MediaPause();
+                _previewStage?.MediaPause();
+            }
+
+            return Task.CompletedTask;
+        });
+    }
+
+    public void MediaSeek(double positionSec)
+    {
+        _ = RunOnDispatcherAsync(() =>
+        {
+            if (_foregroundUsesWebFallback)
+            {
+                _windowWeb?.Adapter?.MediaSeek(positionSec);
+                _previewStage?.Adapter?.MediaSeek(positionSec);
+            }
+            else
+            {
+                _windowWeb?.MediaSeek(positionSec);
+                _previewStage?.MediaSeek(positionSec);
+            }
+
+            return Task.CompletedTask;
+        });
+    }
+
+    public void MediaSetLoop(bool loop)
+    {
+        _ = RunOnDispatcherAsync(async () =>
+        {
+            _viewModel ??= _serviceProvider.GetRequiredService<ProjectionDisplayViewModel>();
+            _viewModel.MediaLoopEnabled = loop;
+            if (_foregroundUsesWebFallback)
+            {
+                _windowWeb?.Adapter?.MediaSetLoop(loop);
+                _previewStage?.Adapter?.MediaSetLoop(loop);
+            }
+            else
+            {
+                _previewStage?.ForegroundMedia.SetLoop(loop);
+                _windowWeb?.ForegroundMedia.SetLoop(loop);
+            }
+
+            await Task.CompletedTask;
+        });
+    }
+
+    public void StopForegroundMedia()
+    {
+        // Синхронно на UI-потоке — иначе NavigatingFrom уходит раньше Hide и MediaPlayer крашит.
+        _ = RunOnDispatcherAsync(() =>
+        {
+            try
+            {
+                ClearWebForegroundFallback();
+                _syncedForegroundMediaPath = null;
+                _foregroundUsesWebFallback = false;
+                _webFallbackPath = null;
+                _previewStage?.ForegroundMedia.Hide();
+                _windowWeb?.ForegroundMedia.Hide();
+            }
+            catch (Exception ex)
+            {
+                ChyguiSlide.Data.InteractionLogger.Log(
+                    $"StopForegroundMedia: {ex.Message}");
+            }
+        });
     }
 
     public async Task ToggleVideoModeAsync()
@@ -1074,14 +1405,8 @@ public sealed class ProjectionDisplayService : IProjectionDisplayService
 
         StopTopMostKeeper();
         _hotkeyDispatcher.DetachProjection();
-        if (_viewModel is not null)
-        {
-            _viewModel.BackgroundMediaChanged -= OnBackgroundMediaChanged;
-        }
-
         _windowWeb.Closed -= OnWindowClosed;
         _windowWeb.DisposeAdapter();
-        _syncedBackgroundVideoPath = null;
         _windowWeb = null;
         ProjectionWindowVisibilityChanged?.Invoke(this, false);
     }

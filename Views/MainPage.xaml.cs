@@ -112,10 +112,24 @@ public sealed partial class MainPage : Page
 
     private void OnModernNavItemClick(object sender, ItemClickEventArgs e)
     {
-        if (e.ClickedItem is ShellNavigationItem item)
+        if (e.ClickedItem is not ShellNavigationItem item)
         {
-            ViewModel.SelectedItem = item;
+            return;
         }
+
+        // Вне обработчика клика — иначе реентерабельный Navigate даёт E_ABORT / краш.
+        _ = DispatcherQueue.TryEnqueue(() =>
+        {
+            try
+            {
+                ViewModel.SelectedItem = item;
+            }
+            catch (Exception ex)
+            {
+                ChyguiSlide.Data.InteractionLogger.Log(
+                    $"MainPage.OnModernNavItemClick: {ex.Message}");
+            }
+        });
     }
 
     private void OnModernNavSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -187,7 +201,15 @@ public sealed partial class MainPage : Page
 
         if (ContentFrame.CurrentSourcePageType != item.PageType)
         {
-            ContentFrame.Navigate(item.PageType, null, transition);
+            try
+            {
+                ContentFrame.Navigate(item.PageType, null, transition);
+            }
+            catch (Exception ex)
+            {
+                ChyguiSlide.Data.InteractionLogger.Log(
+                    $"MainPage.NavigateToSelection: {ex.GetType().Name} {ex.Message}");
+            }
         }
     }
 }

@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using ChyguiSlide.Services.Models;
 using ChyguiSlide.ViewModels;
 using ChyguiSlide.Windows;
 using Microsoft.UI.Xaml;
@@ -16,6 +17,7 @@ public sealed partial class WebProjectionPreview : UserControl
     private static int _profileCounter;
 
     private readonly string _profileName;
+    private readonly NativeForegroundMediaHost _foregroundMedia = new();
     private ProjectionDisplayViewModel? _viewModel;
     private WebProjectionAdapter? _adapter;
     private bool _navigationHooked;
@@ -25,8 +27,11 @@ public sealed partial class WebProjectionPreview : UserControl
     {
         InitializeComponent();
         _profileName = "preview-" + Interlocked.Increment(ref _profileCounter);
+        _foregroundMedia.Attach(ForegroundMediaPlayer, ForegroundMediaImage, emitPlaybackStatus: true);
+        _foregroundMedia.StatusChanged += OnForegroundMediaStatusChanged;
         Loaded += OnLoaded;
         SizeChanged += OnPreviewSizeChanged;
+        Unloaded += OnUnloaded;
     }
 
     public MediaPlayerElement? VideoPlayerElement => VideoPlayer;
@@ -34,6 +39,10 @@ public sealed partial class WebProjectionPreview : UserControl
     public Image? NdiVideoImageElement => NdiVideoImage;
 
     public MediaPlayerElement? BackgroundVideoPlayerElement => null;
+
+    public NativeForegroundMediaHost ForegroundMedia => _foregroundMedia;
+
+    public WebProjectionAdapter? Adapter => _adapter;
 
     private int _outputWidth = 1920;
     private int _outputHeight = 1080;
@@ -66,9 +75,36 @@ public sealed partial class WebProjectionPreview : UserControl
         _adapter?.PushFullState();
     }
 
+    public void MediaPlay() => _foregroundMedia.Play();
+
+    public void MediaPause() => _foregroundMedia.Pause();
+
+    public void MediaSeek(double positionSec) => _foregroundMedia.Seek(positionSec);
+
+    public void MediaSetLoop(bool loop) => _foregroundMedia.SetLoop(loop);
+
+    public void ShowWebPlaylistMedia(string path, bool isVideo, bool loop)
+        => _adapter?.ShowPlaylistMedia(path, isVideo, loop);
+
+    public void ShowWebMediaCover()
+        => _adapter?.ShowMediaCover();
+
+    public void HideWebPlaylistMedia()
+        => _adapter?.HidePlaylistMedia();
+
+    public event EventHandler<MediaPlaybackStatus>? ForegroundMediaStatusChanged;
+
+    private void OnForegroundMediaStatusChanged(object? sender, MediaPlaybackStatus e)
+        => ForegroundMediaStatusChanged?.Invoke(this, e);
+
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         _ = EnsureInitializedAsync();
+    }
+
+    private void OnUnloaded(object sender, RoutedEventArgs e)
+    {
+        _foregroundMedia.Hide();
     }
 
     private void OnPreviewSizeChanged(object sender, SizeChangedEventArgs e)
@@ -126,7 +162,8 @@ public sealed partial class WebProjectionPreview : UserControl
                 WebView.CoreWebView2,
                 _viewModel,
                 previewFit: false,
-                instantSlides: _instantSlides);
+                instantSlides: _instantSlides,
+                emitMediaTransportClock: false);
         }
 
         _adapter.MarkPageReady();

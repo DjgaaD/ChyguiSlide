@@ -38,6 +38,29 @@
             display: none;
             pointer-events: none;
         }
+        #fg-media {
+            position: absolute;
+            inset: 0;
+            z-index: 2;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            /* Непрозрачный слой — иначе сквозь «битое»/грузящееся видео видно фон темы. */
+            background: #000;
+            pointer-events: none;
+        }
+        #fg-media.visible {
+            display: flex;
+        }
+        #fg-media img,
+        #fg-media video {
+            max-width: 100%;
+            max-height: 100%;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background: #000;
+        }
         #stage {
             position: absolute;
             z-index: 1;
@@ -129,6 +152,10 @@
         <div id="layer-a" class="text-layer" style="opacity:1;"></div>
         <div id="layer-b" class="text-layer" style="opacity:0;"></div>
     </div>
+    <div id="fg-media" aria-hidden="true">
+        <img id="fg-image" alt="" style="display:none;" />
+        <video id="fg-video" playsinline preload="auto" style="display:none;"></video>
+    </div>
     <script>
         /**
          * Переходы 01 / 03 / 05 / 07 — дословный порт из slide-transitions-demo.html.
@@ -200,6 +227,18 @@
                     break;
                 case 'setPreviewFit':
                     setPreviewFit(!!data.enabled);
+                    break;
+                case 'showMedia':
+                    showMedia(data);
+                    break;
+                case 'showMediaCover':
+                    showMediaCover();
+                    break;
+                case 'hideMedia':
+                    hideMedia();
+                    break;
+                case 'mediaCommand':
+                    handleMediaCommand(data);
                     break;
             }
         }
@@ -450,6 +489,12 @@
         let _pending = null;
 
         async function updateSlide(data) {
+            // Текстовый слайд поверх медиа — убираем foreground media.
+            const lines = data.lines || [];
+            if (lines.length > 0) {
+                hideMedia();
+            }
+
             // Кегль/цвет нового слайда — в state до анимации, на DOM только в fillLayer
             mergeThemeFrom(data);
 
@@ -781,6 +826,7 @@
             if (videoUrl) {
                 background.style.backgroundImage = 'none';
                 video.style.display = 'block';
+                video.style.visibility = '';
                 video.loop = loop !== false;
                 video.muted = true;
                 if (video.dataset.src !== videoUrl) {
@@ -795,6 +841,8 @@
                 return;
             }
 
+            _bgSuspendedForFg = false;
+            video.style.visibility = '';
             video.pause();
             if (video.dataset.src) {
                 delete video.dataset.src;
@@ -816,6 +864,301 @@
             // только в fillLayer (иначе уходящий текст «сжимается» до анимации).
             if (!_busy) {
                 applyThemeToLayer(visibleLayer(), { applyLayout: false });
+            }
+        }
+
+        let _mediaStatusTimer = null;
+        let _mediaActive = false;
+        let _fgMediaLoop = false;
+        let _bgSuspendedForFg = false;
+
+        function suspendBackgroundForForeground() {
+            const video = document.getElementById('bg-video');
+            if (!video) return;
+            if (video.dataset.src) {
+                _bgSuspendedForFg = true;
+                try { video.pause(); } catch (_) { /* ignore */ }
+                video.style.visibility = 'hidden';
+            }
+        }
+
+        function resumeBackgroundAfterForeground() {
+            const video = document.getElementById('bg-video');
+            if (!video || !_bgSuspendedForFg) return;
+            _bgSuspendedForFg = false;
+            video.style.visibility = '';
+            if (video.dataset.src && video.style.display !== 'none') {
+                const playPromise = video.play();
+                if (playPromise && typeof playPromise.catch === 'function') {
+                    playPromise.catch(() => {});
+                }
+            }
+        }
+
+        function postMediaStatus() {
+            if (!_mediaActive || !window.chrome?.webview) return;
+            const video = document.getElementById('fg-video');
+            if (!video || video.style.display === 'none') return;
+            maybeRestartForegroundLoop(video);
+            const duration = Number.isFinite(video.duration) ? video.duration : 0;
+            const position = Number.isFinite(video.currentTime) ? video.currentTime : 0;
+            window.chrome.webview.postMessage(JSON.stringify({
+                type: 'mediaStatus',
+                position,
+                duration,
+                paused: !!video.paused
+            }));
+        }
+
+        function startMediaStatusLoop() {
+            stopMediaStatusLoop();
+            _mediaStatusTimer = setInterval(postMediaStatus, 250);
+            postMediaStatus();
+        }
+
+        function stopMediaStatusLoop() {
+            if (_mediaStatusTimer) {
+                clearInterval(_mediaStatusTimer);
+                _mediaStatusTimer = null;
+            }
+        }
+
+        function clearTextLayersForMedia() {
+            const a = document.getElementById('layer-a');
+            const b = document.getElementById('layer-b');
+            if (a) {
+                a.innerHTML = '';
+                a.style.opacity = 0;
+            }
+            if (b) {
+                b.innerHTML = '';
+                b.style.opacity = 0;
+            }
+        }
+
+        function resolveLoopFlag(data) {
+            if (!data) return false;
+            if (data.loopEnabled === true || data.loop === true) return true;
+            return false;
+        }
+
+        function applyForegroundLoop(video, enabled) {
+            _fgMediaLoop = !!enabled;
+            // Нативный video.loop в WebView2 часто срывается — крутим вручную.
+            if (video) {
+                video.loop = false;
+            }
+            logToCSharp('[projection] fg loop=' + _fgMediaLoop);
+        }
+
+        function maybeRestartForegroundLoop(video) {
+            if (!_fgMediaLoop || !_mediaActive || !video) return;
+            const d = video.duration;
+            if (!Number.isFinite(d) || d <= 0.2) return;
+            // Только когда ролик реально остановился в конце (не режем последние кадры).
+            const atEnd = video.ended
+                || (video.paused && video.currentTime >= Math.max(0, d - 0.4));
+            if (!atEnd) return;
+            if (video._fgLoopRestarting) return;
+            video._fgLoopRestarting = true;
+            logToCSharp('[projection] fg loop restart at ' + video.currentTime + '/' + d);
+            try {
+                video.currentTime = 0;
+            } catch (_) { /* ignore */ }
+            armForegroundVideoAutoplay(video);
+            setTimeout(() => { video._fgLoopRestarting = false; }, 400);
+        }
+
+        function onForegroundVideoEnded() {
+            maybeRestartForegroundLoop(document.getElementById('fg-video'));
+            postMediaStatus();
+        }
+
+        function ensureForegroundVideoEndedHook(video) {
+            if (!video || video._fgEndedHooked) return;
+            video._fgEndedHooked = true;
+            video.addEventListener('ended', onForegroundVideoEnded);
+        }
+
+        function tryPlayForegroundVideo(video, unmuteAfter) {
+            if (!video) return;
+            const wantSound = unmuteAfter !== false;
+            // Сначала muted — Chromium почти всегда разрешает; затем снимаем mute.
+            if (wantSound) {
+                video.muted = true;
+            }
+            const p = video.play();
+            if (p && typeof p.then === 'function') {
+                p.then(() => {
+                    if (wantSound) {
+                        video.muted = false;
+                    }
+                    postMediaStatus();
+                }).catch(err => {
+                    logToCSharp('[projection] fg-video play failed: ' + (err && err.message ? err.message : err));
+                    // Повтор без звука, чтобы картинка хотя бы шла
+                    video.muted = true;
+                    const p2 = video.play();
+                    if (p2 && typeof p2.catch === 'function') {
+                        p2.then(() => postMediaStatus()).catch(() => postMediaStatus());
+                    } else {
+                        postMediaStatus();
+                    }
+                });
+            } else {
+                if (wantSound) video.muted = false;
+                postMediaStatus();
+            }
+        }
+
+        function armForegroundVideoAutoplay(video) {
+            if (!video) return;
+            const kick = () => tryPlayForegroundVideo(video, true);
+            kick();
+            if (video.readyState >= 2) {
+                return;
+            }
+            if (video._fgPlayArmed) {
+                return;
+            }
+            video._fgPlayArmed = true;
+            const once = () => {
+                video._fgPlayArmed = false;
+                video.removeEventListener('canplay', once);
+                video.removeEventListener('loadeddata', once);
+                kick();
+            };
+            video.addEventListener('canplay', once);
+            video.addEventListener('loadeddata', once);
+        }
+
+        function showMediaCover() {
+            const host = document.getElementById('fg-media');
+            const img = document.getElementById('fg-image');
+            const video = document.getElementById('fg-video');
+            if (!host) return;
+
+            clearTextLayersForMedia();
+            suspendBackgroundForForeground();
+            stopMediaStatusLoop();
+            _mediaActive = false;
+            host.classList.add('visible');
+
+            if (video) {
+                video.pause();
+                video.autoplay = false;
+                if (video.dataset.src) {
+                    delete video.dataset.src;
+                    video.removeAttribute('src');
+                    video.load();
+                }
+                video.style.display = 'none';
+            }
+            if (img) {
+                img.removeAttribute('src');
+                img.style.display = 'none';
+            }
+            logToCSharp('[projection] showMediaCover (hide theme bg)');
+        }
+
+        function showMedia(data) {
+            const host = document.getElementById('fg-media');
+            const img = document.getElementById('fg-image');
+            const video = document.getElementById('fg-video');
+            if (!host || !img || !video) return;
+
+            clearTextLayersForMedia();
+            suspendBackgroundForForeground();
+
+            const mediaUrl = data.mediaUrl || '';
+            const isVideo = !!data.isVideo;
+            host.classList.add('visible');
+            _mediaActive = true;
+            applyForegroundLoop(video, resolveLoopFlag(data));
+
+            if (isVideo) {
+                img.style.display = 'none';
+                img.removeAttribute('src');
+                video.style.display = 'block';
+                video.autoplay = true;
+                video.playsInline = true;
+                ensureForegroundVideoEndedHook(video);
+                video.onerror = () => {
+                    const code = video.error ? video.error.code : '?';
+                    logToCSharp('[projection] fg-video error code=' + code + ' src=' + (mediaUrl || ''));
+                };
+                if (video.dataset.src !== mediaUrl) {
+                    video.dataset.src = mediaUrl;
+                    video.src = mediaUrl;
+                    video.load();
+                }
+                // Старт сразу при показе (и ещё раз когда буфер готов)
+                armForegroundVideoAutoplay(video);
+                startMediaStatusLoop();
+            } else {
+                stopMediaStatusLoop();
+                video.pause();
+                video.autoplay = false;
+                if (video.dataset.src) {
+                    delete video.dataset.src;
+                    video.removeAttribute('src');
+                    video.load();
+                }
+                video.style.display = 'none';
+                img.style.display = 'block';
+                img.src = mediaUrl;
+            }
+
+            logToCSharp('[projection] showMedia isVideo=' + isVideo + ' loop=' + _fgMediaLoop + ' src=' + mediaUrl);
+        }
+
+        function hideMedia() {
+            const host = document.getElementById('fg-media');
+            const img = document.getElementById('fg-image');
+            const video = document.getElementById('fg-video');
+            if (!host) return;
+
+            _mediaActive = false;
+            stopMediaStatusLoop();
+            host.classList.remove('visible');
+
+            if (video) {
+                video.pause();
+                if (video.dataset.src) {
+                    delete video.dataset.src;
+                    video.removeAttribute('src');
+                    video.load();
+                }
+                video.style.display = 'none';
+            }
+            if (img) {
+                img.removeAttribute('src');
+                img.style.display = 'none';
+            }
+
+            resumeBackgroundAfterForeground();
+        }
+
+        function handleMediaCommand(data) {
+            const video = document.getElementById('fg-video');
+            const action = (data.action || '').toLowerCase();
+            if (action === 'setloop') {
+                applyForegroundLoop(video, resolveLoopFlag(data));
+                postMediaStatus();
+                return;
+            }
+            if (!video || video.style.display === 'none') return;
+            if (action === 'play') {
+                armForegroundVideoAutoplay(video);
+            } else if (action === 'pause') {
+                video.autoplay = false;
+                video.pause();
+                postMediaStatus();
+            } else if (action === 'seek' && typeof data.positionSec === 'number') {
+                try {
+                    video.currentTime = Math.max(0, data.positionSec);
+                } catch (_) { /* ignore */ }
+                postMediaStatus();
             }
         }
     </script>

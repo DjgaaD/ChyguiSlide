@@ -46,6 +46,49 @@ public class PlaylistEntry : INotifyPropertyChanged
         }
     }
 
+    /// <summary>Путь к медиафайлу быстрого плейлиста (фото/mp4). Не сохраняется в БД.</summary>
+    [NotMapped]
+    public string? MediaPath { get; set; }
+
+    [NotMapped]
+    public bool IsMediaItem => !string.IsNullOrWhiteSpace(MediaPath);
+
+    /// <summary>Заголовок в UI быстрого плейлиста (для медиа — переименовывается в программе).</summary>
+    [NotMapped]
+    public string DisplayTitle
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(Song?.Title))
+            {
+                return Song.Title;
+            }
+
+            if (!string.IsNullOrWhiteSpace(MediaPath))
+            {
+                return System.IO.Path.GetFileName(MediaPath);
+            }
+
+            return "Без названия";
+        }
+        set
+        {
+            if (Song is null)
+            {
+                return;
+            }
+
+            var next = string.IsNullOrWhiteSpace(value) ? Song.Title : value.Trim();
+            if (string.Equals(Song.Title, next, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            Song.Title = next;
+            OnPropertyChanged();
+        }
+    }
+
     public event PropertyChangedEventHandler? PropertyChanged;
 
     protected void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>

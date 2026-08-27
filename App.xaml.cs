@@ -1225,6 +1225,7 @@ namespace ChyguiSlide
                     services.AddSingleton<IYandexDiskService, YandexDiskService>();
                     services.AddSingleton<ICatalogBackupService, CatalogBackupService>();
                     services.AddSingleton<IThemeBackgroundMediaService, ThemeBackgroundMediaService>();
+                    services.AddSingleton<IPlaylistMediaService, PlaylistMediaService>();
                     services.AddSingleton<IAppUpdateService, AppUpdateService>();
                     services.AddHostedService<CatalogBackupScheduler>();
                     services.AddSingleton<IPresentationImportService, PresentationImportService>();

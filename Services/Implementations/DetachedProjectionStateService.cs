@@ -24,6 +24,10 @@ internal sealed class DetachedProjectionStateService : IProjectionStateService
     {
     }
 
+    public void SetMedia(string mediaPath, string title, Guid? songId = null)
+    {
+    }
+
     public void SetPlaylistContext(Guid? playlistId)
     {
     }

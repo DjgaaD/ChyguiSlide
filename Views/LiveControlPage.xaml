@@ -128,6 +128,16 @@
                                 Padding="4"
                                 Background="Transparent"
                                 BorderThickness="0"
+                                Click="OnAddMediaClick"
+                                ToolTipService.ToolTip="Добавить медиа">
+                                <icons:LucideIcon Kind="plus" Size="16" />
+                            </Button>
+                            <Button
+                                Width="32"
+                                Height="32"
+                                Padding="4"
+                                Background="Transparent"
+                                BorderThickness="0"
                                 Click="OnSaveQuickPlaylistClick"
                                 ToolTipService.ToolTip="Сохранить быстрый плейлист">
                                 <icons:LucideIcon Kind="save" Size="16" />
@@ -157,6 +167,7 @@
                             Foreground="{ThemeResource ModernMutedBrush}"
                             Text="БЫСТРЫЙ ПЛЕЙЛИСТ" />
                         <ListView
+                            x:Name="QuickEntriesListView"
                             Grid.Row="1"
                             ItemsSource="{Binding QuickEntries}"
                             SelectedItem="{Binding SelectedQuickEntry, Mode=TwoWay}"
@@ -186,22 +197,37 @@
                                             FontSize="15"
                                             VerticalAlignment="Center"
                                             Opacity="{Binding WasPlayed, Converter={StaticResource BoolToDimOpacityConverter}}"
-                                            Text="{Binding Song.Title}"
+                                            Text="{Binding DisplayTitle}"
                                             TextTrimming="CharacterEllipsis" />
-                                        <Button
+                                        <StackPanel
                                             Grid.Column="2"
-                                            Width="32"
-                                            Height="32"
-                                            Padding="3"
-                                            Background="Transparent"
-                                            BorderThickness="0"
-                                            HorizontalAlignment="Right"
-                                            VerticalAlignment="Center"
-                                            Click="OnRemoveQuickEntryClick"
-                                            Tag="{Binding}"
-                                            ToolTipService.ToolTip="Удалить из плейлиста">
-                                            <icons:LucideIcon Kind="trash-2" Size="18" StrokeWidth="2.25" />
-                                        </Button>
+                                            Orientation="Horizontal"
+                                            Spacing="0"
+                                            VerticalAlignment="Center">
+                                            <Button
+                                                Width="32"
+                                                Height="32"
+                                                Padding="3"
+                                                Background="Transparent"
+                                                BorderThickness="0"
+                                                Click="OnRenameQuickMediaClick"
+                                                Tag="{Binding}"
+                                                ToolTipService.ToolTip="Переименовать"
+                                                Visibility="{Binding IsMediaItem, Converter={StaticResource BoolToVisibilityConverter}}">
+                                                <icons:LucideIcon Kind="pencil" Size="18" StrokeWidth="2.25" />
+                                            </Button>
+                                            <Button
+                                                Width="32"
+                                                Height="32"
+                                                Padding="3"
+                                                Background="Transparent"
+                                                BorderThickness="0"
+                                                Click="OnRemoveQuickEntryClick"
+                                                Tag="{Binding}"
+                                                ToolTipService.ToolTip="Удалить из плейлиста">
+                                                <icons:LucideIcon Kind="trash-2" Size="18" StrokeWidth="2.25" />
+                                            </Button>
+                                        </StackPanel>
                                     </Grid>
                                 </DataTemplate>
                             </ListView.ItemTemplate>
@@ -286,7 +312,8 @@
                             ItemsSource="{Binding Sections}"
                             SelectedItem="{Binding SelectedSection, Mode=TwoWay}"
                             SelectionMode="Single"
-                            ItemContainerStyle="{StaticResource ModernSelectableListViewItemStyle}">
+                            ItemContainerStyle="{StaticResource ModernSelectableListViewItemStyle}"
+                            Visibility="{Binding IsSelectedQuickEntryMedia, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Invert}">
                             <ListView.ItemTemplate>
                                 <DataTemplate>
                                     <StackPanel Padding="22,16,20,16" Spacing="8">
@@ -304,6 +331,24 @@
                                 </DataTemplate>
                             </ListView.ItemTemplate>
                         </ListView>
+                        <StackPanel
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Center"
+                            Spacing="8"
+                            Visibility="{Binding IsSelectedQuickEntryMedia, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <TextBlock
+                                FontSize="22"
+                                FontWeight="SemiBold"
+                                HorizontalAlignment="Center"
+                                Text="Медиафайл" />
+                            <TextBlock
+                                FontSize="16"
+                                Foreground="{ThemeResource ModernMutedBrush}"
+                                HorizontalAlignment="Center"
+                                TextWrapping="Wrap"
+                                TextAlignment="Center"
+                                Text="{Binding SelectedMediaDisplayName}" />
+                        </StackPanel>
                         <Rectangle
                             x:Name="ModernSectionStripe"
                             Width="3"
@@ -312,7 +357,8 @@
                             VerticalAlignment="Top"
                             Fill="{ThemeResource ModernAccentBrush}"
                             IsHitTestVisible="False"
-                            Opacity="0" />
+                            Opacity="0"
+                            Visibility="{Binding IsSelectedQuickEntryMedia, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter=Invert}" />
                     </Grid>
                 </Grid>
             </Border>
@@ -338,6 +384,73 @@
                                 Visibility="Collapsed" />
                         </Grid>
                     </Viewbox>
+
+                    <Grid
+                        Margin="0,12,0,0"
+                        ColumnSpacing="10"
+                        Visibility="{Binding IsMediaPlaybackActive, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <Button
+                            Grid.Column="0"
+                            MinWidth="88"
+                            Height="36"
+                            Padding="12,0"
+                            Content="{Binding MediaPlayPauseLabel}"
+                            Command="{Binding ToggleMediaPlaybackCommand}"
+                            Background="Transparent"
+                            BorderBrush="{ThemeResource ModernGhostButtonBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="0" />
+                        <ToggleButton
+                            Grid.Column="1"
+                            Width="36"
+                            Height="36"
+                            Padding="0"
+                            IsChecked="{Binding IsMediaLoopEnabled, Mode=TwoWay}"
+                            IsEnabled="{Binding IsMediaPlaybackActive}"
+                            ToolTipService.ToolTip="Играть по кругу"
+                            Background="Transparent"
+                            BorderBrush="{ThemeResource ModernGhostButtonBorderBrush}"
+                            BorderThickness="1"
+                            CornerRadius="0">
+                            <icons:LucideIcon Kind="rotate-ccw" Size="16" IsHitTestVisible="False" />
+                        </ToggleButton>
+                        <TextBlock
+                            Grid.Column="2"
+                            MinWidth="44"
+                            Margin="4,0,0,0"
+                            VerticalAlignment="Center"
+                            FontSize="13"
+                            FontFamily="Consolas"
+                            Foreground="{ThemeResource ModernMutedBrush}"
+                            Text="{Binding MediaElapsedLabel}" />
+                        <Slider
+                            x:Name="MediaSeekSlider"
+                            Grid.Column="3"
+                            VerticalAlignment="Center"
+                            Margin="8,0"
+                            Minimum="0"
+                            Maximum="1"
+                            Value="0"
+                            StepFrequency="0.1"
+                            IsThumbToolTipEnabled="False" />
+                        <TextBlock
+                            Grid.Column="4"
+                            MinWidth="44"
+                            Margin="0,0,0,0"
+                            VerticalAlignment="Center"
+                            HorizontalAlignment="Right"
+                            FontSize="13"
+                            FontFamily="Consolas"
+                            Foreground="{ThemeResource ModernMutedBrush}"
+                            Text="{Binding MediaRemainingLabel}" />
+                    </Grid>
 
                     <Grid Margin="0,16,0,0">
                         <Button

@@ -7,8 +7,8 @@
     <Style x:Key="SegmentedTrackStyle" TargetType="Border">
         <Setter Property="Padding" Value="3" />
         <Setter Property="CornerRadius" Value="8" />
-        <Setter Property="Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}" />
-        <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}" />
+        <Setter Property="Background" Value="{ThemeResource ModernItemHoverBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource ModernStrokeBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="HorizontalAlignment" Value="Stretch" />
         <Setter Property="MaxWidth" Value="420" />
@@ -23,7 +23,7 @@
         <Setter Property="VerticalContentAlignment" Value="Center" />
         <Setter Property="FontSize" Value="13" />
         <Setter Property="FontWeight" Value="Medium" />
-        <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+        <Setter Property="Foreground" Value="{ThemeResource ModernMutedBrush}" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="Template">
@@ -68,8 +68,8 @@
                             <VisualStateGroup x:Name="CheckStates">
                                 <VisualState x:Name="Checked">
                                     <VisualState.Setters>
-                                        <Setter Target="Root.Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}" />
-                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                                        <Setter Target="Root.Background" Value="{ThemeResource ModernSurfaceBrush}" />
+                                        <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource ModernNavActiveForegroundBrush}" />
                                         <Setter Target="ContentPresenter.FontWeight" Value="SemiBold" />
                                     </VisualState.Setters>
                                 </VisualState>

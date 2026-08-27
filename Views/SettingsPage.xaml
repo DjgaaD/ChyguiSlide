@@ -37,11 +37,17 @@
                 </NavigationViewItem.Content>
             </NavigationViewItem>
         </DataTemplate>
+
+        <!-- Палитра как у «Песни» / Modern* -->
+        <StaticResource x:Key="NavigationViewExpandedPaneBackground" ResourceKey="ModernSurfaceBrush" />
+        <StaticResource x:Key="NavigationViewDefaultPaneBackground" ResourceKey="ModernSurfaceBrush" />
+        <StaticResource x:Key="NavigationViewContentBackground" ResourceKey="ModernPageBackgroundBrush" />
     </Page.Resources>
 
-    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+    <Grid Background="{ThemeResource ModernPageBackgroundBrush}">
         <NavigationView
             x:Name="SettingsNav"
+            Background="{ThemeResource ModernPageBackgroundBrush}"
             PaneDisplayMode="Left"
             IsBackButtonVisible="Collapsed"
             IsSettingsVisible="False"
@@ -59,8 +65,8 @@
                         Spacing="16"
                         Visibility="{Binding IsProjectionSectionVisible, Converter={StaticResource BoolToVisibilityConverter}}">
                         <Border
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Background="{ThemeResource ModernSurfaceBrush}"
+                            BorderBrush="{ThemeResource ModernStrokeBrush}"
                             BorderThickness="1"
                             CornerRadius="12"
                             Padding="20">
@@ -68,7 +74,7 @@
                                 <StackPanel Spacing="4">
                                     <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Экран трансляции" />
                                     <TextBlock
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Foreground="{ThemeResource ModernMutedBrush}"
                                         TextWrapping="Wrap"
                                         Text="Выберите монитор для окна проекции. Если экран не выбран, используется основной." />
                                 </StackPanel>
@@ -97,8 +103,8 @@
                         </Border>
 
                         <Border
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Background="{ThemeResource ModernSurfaceBrush}"
+                            BorderBrush="{ThemeResource ModernStrokeBrush}"
                             BorderThickness="1"
                             CornerRadius="12"
                             Padding="20">
@@ -106,7 +112,7 @@
                                 <StackPanel Spacing="4">
                                     <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Отступы текста на экране" />
                                     <TextBlock
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Foreground="{ThemeResource ModernMutedBrush}"
                                         TextWrapping="Wrap"
                                         Text="Фон занимает весь экран, текст размещается внутри заданных отступов. Размер шрифта подстраивается под получившуюся область." />
                                 </StackPanel>
@@ -153,14 +159,14 @@
                                         Value="{Binding ProjectionMarginBottom, Mode=TwoWay}" />
                                 </Grid>
                                 <TextBlock
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Foreground="{ThemeResource ModernMutedBrush}"
                                     Text="{Binding ProjectionContentAreaHint, Mode=OneWay}" />
                             </StackPanel>
                         </Border>
 
                         <Border
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Background="{ThemeResource ModernSurfaceBrush}"
+                            BorderBrush="{ThemeResource ModernStrokeBrush}"
                             BorderThickness="1"
                             CornerRadius="12"
                             Padding="20">
@@ -168,7 +174,7 @@
                                 <StackPanel Spacing="4">
                                     <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Постоянный фон" />
                                     <TextBlock
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Foreground="{ThemeResource ModernMutedBrush}"
                                         TextWrapping="Wrap"
                                         Text="{Binding KeepProjectionBackgroundHint}" />
                                 </StackPanel>
@@ -180,8 +186,8 @@
                         </Border>
 
                         <Border
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Background="{ThemeResource ModernSurfaceBrush}"
+                            BorderBrush="{ThemeResource ModernStrokeBrush}"
                             BorderThickness="1"
                             CornerRadius="12"
                             Padding="20">
@@ -189,7 +195,7 @@
                                 <StackPanel Spacing="4">
                                     <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="OBS / стрим (локальная сеть)" />
                                     <TextBlock
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Foreground="{ThemeResource ModernMutedBrush}"
                                         TextWrapping="Wrap"
                                         Text="Передаёт только текст слайдов на другой ПК в той же сети. В OBS добавьте источник «Browser Source» с URL ниже, задайте нужный размер (например 1920×200) — перенос строк и размер шрифта подстроятся автоматически. Включите прозрачный фон в OBS." />
                                 </StackPanel>
@@ -217,14 +223,14 @@
                                     Value="{Binding ObsStreamPort, Mode=TwoWay}"
                                     IsEnabled="{Binding ObsStreamEnabled}" />
                                 <TextBlock
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Foreground="{ThemeResource ModernMutedBrush}"
                                     Text="URL для OBS на другом ПК в локальной сети:" />
                                 <TextBlock
                                     FontFamily="Consolas,Courier New"
                                     IsTextSelectionEnabled="True"
                                     Text="{Binding ObsStreamUrlHint, Mode=OneWay}" />
                                 <TextBlock
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Foreground="{ThemeResource ModernMutedBrush}"
                                     Text="Проверка на этом же ПК (не для OBS на другом компьютере):" />
                                 <TextBlock
                                     FontFamily="Consolas,Courier New"
@@ -236,20 +242,20 @@
                                     Visibility="{Binding ObsStreamShowsLanWarning, Converter={StaticResource BoolToVisibilityConverter}}"
                                     Text="Сервер слушает только localhost. URL выше — ваш LAN IP; если страница не открывается с другого ПК, разрешите «Чугуй Слайды» в брандмауэре Windows для частной сети." />
                                 <TextBlock
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Foreground="{ThemeResource ModernMutedBrush}"
                                     TextWrapping="Wrap"
                                     IsTextSelectionEnabled="True"
                                     Text="{Binding ObsStreamStatus}" />
                                 <TextBlock
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Foreground="{ThemeResource ModernMutedBrush}"
                                     TextWrapping="Wrap"
                                     Text="При первом запуске Windows может запросить разрешение брандмауэра для приложения — разрешите доступ в локальной сети." />
                             </StackPanel>
                         </Border>
 
                         <Border
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Background="{ThemeResource ModernSurfaceBrush}"
+                            BorderBrush="{ThemeResource ModernStrokeBrush}"
                             BorderThickness="1"
                             CornerRadius="12"
                             Padding="20">
@@ -257,7 +263,7 @@
                                 <StackPanel Spacing="4">
                                     <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Перенос текста" />
                                     <TextBlock
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Foreground="{ThemeResource ModernMutedBrush}"
                                         TextWrapping="Wrap"
                                         Text="Выберите, как длинные строки песни размещаются на слайде." />
                                 </StackPanel>
@@ -284,7 +290,7 @@
                                                 <Border
                                                     MinHeight="240"
                                                     Padding="12"
-                                                    Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                                    Background="{ThemeResource ModernItemHoverBackgroundBrush}"
                                                     BorderBrush="{x:Bind IsSelected, Mode=OneWay, Converter={StaticResource BoolToAccentBorderBrushConverter}}"
                                                     BorderThickness="{x:Bind IsSelected, Mode=OneWay, Converter={StaticResource BoolToAccentBorderThicknessConverter}}"
                                                     CornerRadius="10">
@@ -357,8 +363,8 @@
                         Spacing="16"
                         Visibility="{Binding IsCameraSectionVisible, Converter={StaticResource BoolToVisibilityConverter}}">
                         <Border
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Background="{ThemeResource ModernSurfaceBrush}"
+                            BorderBrush="{ThemeResource ModernStrokeBrush}"
                             BorderThickness="1"
                             CornerRadius="12"
                             Padding="20">
@@ -366,7 +372,7 @@
                                 <StackPanel Spacing="4">
                                     <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Видеопоток с телефона" />
                                     <TextBlock
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Foreground="{ThemeResource ModernMutedBrush}"
                                         TextWrapping="Wrap"
                                         Text="IP и порт Android-устройства для фонового видео. По умолчанию порт 5000." />
                                 </StackPanel>
@@ -385,8 +391,8 @@
 
                     <!-- Интерфейс -->
                     <Border
-                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        Background="{ThemeResource ModernSurfaceBrush}"
+                        BorderBrush="{ThemeResource ModernStrokeBrush}"
                         BorderThickness="1"
                         CornerRadius="12"
                         Padding="20"
@@ -493,7 +499,7 @@
                                         PointerExited="OnPresetPreviewPointerExited">
                                         <Border
                                             Height="168"
-                                            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                            Background="{ThemeResource ModernItemHoverBackgroundBrush}"
                                             BorderBrush="{Binding IsSelected, Converter={StaticResource BoolToAccentBorderBrushConverter}}"
                                             BorderThickness="{Binding IsSelected, Converter={StaticResource BoolToAccentBorderThicknessConverter}}"
                                             CornerRadius="12"
@@ -506,7 +512,7 @@
                                                     Margin="8"
                                                     HorizontalAlignment="Right"
                                                     VerticalAlignment="Top"
-                                                    Background="{ThemeResource AccentFillColorDefaultBrush}"
+                                                    Background="{ThemeResource ModernAccentBrush}"
                                                     CornerRadius="13"
                                                     Visibility="{Binding IsSelected, Converter={StaticResource BoolToVisibilityConverter}}">
                                                     <FontIcon
@@ -556,8 +562,8 @@
                         Spacing="16"
                         Visibility="{Binding IsHotkeysSectionVisible, Converter={StaticResource BoolToVisibilityConverter}}">
                         <Border
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Background="{ThemeResource ModernSurfaceBrush}"
+                            BorderBrush="{ThemeResource ModernStrokeBrush}"
                             BorderThickness="1"
                             CornerRadius="12"
                             Padding="20">
@@ -566,7 +572,7 @@
                                     <StackPanel Spacing="4">
                                         <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Горячие клавиши" />
                                         <TextBlock
-                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Foreground="{ThemeResource ModernMutedBrush}"
                                             TextWrapping="Wrap"
                                             Text="Нажмите кнопку клавиши и затем нужную клавишу на клавиатуре. Esc отменяет назначение." />
                                     </StackPanel>
@@ -583,7 +589,7 @@
                                             <Border
                                                 Margin="0,0,0,10"
                                                 Padding="14,12"
-                                                Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                                Background="{ThemeResource ModernItemHoverBackgroundBrush}"
                                                 CornerRadius="8">
                                                 <Grid ColumnSpacing="16">
                                                     <Grid.ColumnDefinitions>
@@ -594,7 +600,7 @@
                                                     <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
                                                         <TextBlock FontWeight="SemiBold" Text="{x:Bind Title}" />
                                                         <TextBlock
-                                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                            Foreground="{ThemeResource ModernMutedBrush}"
                                                             TextWrapping="Wrap"
                                                             Text="{x:Bind Description}" />
                                                     </StackPanel>
@@ -622,8 +628,8 @@
                         Spacing="16"
                         Visibility="{Binding IsBackupSectionVisible, Converter={StaticResource BoolToVisibilityConverter}}">
                         <Border
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Background="{ThemeResource ModernSurfaceBrush}"
+                            BorderBrush="{ThemeResource ModernStrokeBrush}"
                             BorderThickness="1"
                             CornerRadius="12"
                             Padding="20">
@@ -631,7 +637,7 @@
                                 <StackPanel Spacing="4">
                                     <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Яндекс.Диск" />
                                     <TextBlock
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Foreground="{ThemeResource ModernMutedBrush}"
                                         TextWrapping="Wrap"
                                         Text="Копия всей базы песен (catalog.db) на Яндекс.Диск и восстановление. Создайте приложение на oauth.yandex.ru с правами disk.info, disk.read, disk.write." />
                                 </StackPanel>
@@ -694,7 +700,7 @@
 
                                 <StackPanel Spacing="8">
                                     <TextBlock
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Foreground="{ThemeResource ModernMutedBrush}"
                                         TextWrapping="Wrap"
                                         IsTextSelectionEnabled="True"
                                         Text="{Binding BackupStatusMessage}" />
@@ -708,8 +714,8 @@
                         </Border>
 
                         <Border
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Background="{ThemeResource ModernSurfaceBrush}"
+                            BorderBrush="{ThemeResource ModernStrokeBrush}"
                             BorderThickness="1"
                             CornerRadius="12"
                             Padding="20">
@@ -717,7 +723,7 @@
                                 <StackPanel Spacing="4">
                                     <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Расписание" />
                                     <TextBlock
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Foreground="{ThemeResource ModernMutedBrush}"
                                         TextWrapping="Wrap"
                                         Text="Автоматическая копия в выбранные дни и время, пока программа запущена. Если время пропущено — копия не создаётся." />
                                 </StackPanel>
@@ -760,15 +766,15 @@
                         Spacing="12"
                         Visibility="{Binding IsLogsSectionVisible, Converter={StaticResource BoolToVisibilityConverter}}">
                         <Border
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Background="{ThemeResource ModernSurfaceBrush}"
+                            BorderBrush="{ThemeResource ModernStrokeBrush}"
                             BorderThickness="1"
                             CornerRadius="12"
                             Padding="20">
                             <StackPanel Spacing="8">
                                 <TextBlock Style="{StaticResource SubtitleTextBlockStyle}" Text="Логи приложения" />
                                 <TextBlock
-                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Foreground="{ThemeResource ModernMutedBrush}"
                                     TextWrapping="Wrap"
                                     Text="Просмотр и сохранение логов приложения для диагностики проблем." />
                                 <TextBlock
@@ -779,8 +785,8 @@
                         </Border>
 
                         <Border
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Background="{ThemeResource ModernSurfaceBrush}"
+                            BorderBrush="{ThemeResource ModernStrokeBrush}"
                             BorderThickness="1"
                             CornerRadius="12"
                             Padding="16">
@@ -818,8 +824,8 @@
                         Spacing="16"
                         Visibility="{Binding IsAboutSectionVisible, Converter={StaticResource BoolToVisibilityConverter}}">
                         <Border
-                            Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                            Background="{ThemeResource ModernSurfaceBrush}"
+                            BorderBrush="{ThemeResource ModernStrokeBrush}"
                             BorderThickness="1"
                             CornerRadius="12"
                             Padding="20">
@@ -830,11 +836,11 @@
                                         FontWeight="SemiBold"
                                         Text="{Binding AppProductLabel}" />
                                     <TextBlock
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Foreground="{ThemeResource ModernMutedBrush}"
                                         Visibility="{Binding IsBetaChannel, Converter={StaticResource BoolToVisibilityConverter}}"
                                         Text="Бета-сборка: возможны изменения и доработки." />
                                     <TextBlock
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Foreground="{ThemeResource ModernMutedBrush}"
                                         TextWrapping="Wrap"
                                         Text="Сведения о церкви и контакты разработчика." />
                                     <Button
@@ -850,7 +856,7 @@
                                         FontWeight="SemiBold"
                                         Text="Церковь Евангельских Христиан Баптистов Т9" />
                                     <TextBlock
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Foreground="{ThemeResource ModernMutedBrush}"
                                         TextWrapping="Wrap"
                                         Text="г. Ростов-на-Дону, улица Труда 9" />
                                 </StackPanel>
@@ -858,7 +864,7 @@
                                 <StackPanel Spacing="4">
                                     <TextBlock Text="Контакты разработчика" FontWeight="SemiBold" />
                                     <TextBlock
-                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Foreground="{ThemeResource ModernMutedBrush}"
                                         IsTextSelectionEnabled="True"
                                         Text="DjgaaD@ya.ru" />
                                 </StackPanel>

@@ -1,7 +1,7 @@
 <Project>
-  <!-- РђРІС‚РѕРѕР±РЅРѕРІР»СЏРµС‚СЃСЏ Publish-Release.ps1 РёР· version.json / РїР°СЂР°РјРµС‚СЂРѕРІ. -->
+  <!-- Автообновляется Publish-Release.ps1 из version.json / параметров. -->
   <PropertyGroup>
-    <AppVersion>0.2.1</AppVersion>
+    <AppVersion>0.2.5</AppVersion>
     <AppChannel>release</AppChannel>
     <Version>$(AppVersion)</Version>
     <AssemblyVersion>$(AppVersion).0</AssemblyVersion>

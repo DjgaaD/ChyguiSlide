@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+using ChyguiSlide.Controls;
 using ChyguiSlide.ViewModels;
 using Microsoft.UI;
 using Microsoft.UI.Dispatching;
@@ -41,6 +42,7 @@ public sealed partial class ProjectionWindowWeb : Window
 
     public ProjectionDisplayViewModel ViewModel { get; }
     private WebProjectionAdapter? _adapter;
+    private readonly NativeForegroundMediaHost _foregroundMedia = new();
     private bool _navigationHooked;
 
     private bool _cursorWatchActive;
@@ -57,6 +59,7 @@ public sealed partial class ProjectionWindowWeb : Window
     {
         InitializeComponent();
         ViewModel = viewModel;
+        _foregroundMedia.Attach(ForegroundMediaPlayer, ForegroundMediaImage, emitPlaybackStatus: false);
         SystemBackdrop = null;
         Closed += OnClosed;
         Activated += OnActivated;
@@ -105,7 +108,10 @@ public sealed partial class ProjectionWindowWeb : Window
         _adapter = new WebProjectionAdapter(WebView.CoreWebView2, ViewModel);
         ChyguiSlide.Data.InteractionLogger.Log("[ProjectionWindowWeb] WebProjectionAdapter created after NavigationCompleted");
         _adapter.MarkPageReady();
+        AdapterReady?.Invoke(this, EventArgs.Empty);
     }
+
+    public event EventHandler? AdapterReady;
 
     private void OnActivated(object sender, WindowActivatedEventArgs e)
     {
@@ -139,7 +145,29 @@ public sealed partial class ProjectionWindowWeb : Window
     {
         _adapter?.Dispose();
         _adapter = null;
+        _foregroundMedia.Hide();
     }
+
+    public NativeForegroundMediaHost ForegroundMedia => _foregroundMedia;
+
+    public WebProjectionAdapter? Adapter => _adapter;
+
+    public void MediaPlay() => _foregroundMedia.Play();
+
+    public void MediaPause() => _foregroundMedia.Pause();
+
+    public void MediaSeek(double positionSec) => _foregroundMedia.Seek(positionSec);
+
+    public void MediaSetLoop(bool loop) => _foregroundMedia.SetLoop(loop);
+
+    public void ShowWebPlaylistMedia(string path, bool isVideo, bool loop)
+        => _adapter?.ShowPlaylistMedia(path, isVideo, loop);
+
+    public void ShowWebMediaCover()
+        => _adapter?.ShowMediaCover();
+
+    public void HideWebPlaylistMedia()
+        => _adapter?.HidePlaylistMedia();
 
     public void ExcludeFromAeroPeek()
     {

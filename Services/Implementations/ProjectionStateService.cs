@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.IO;
 using System.Linq;
 using ChyguiSlide.Services.Abstractions;
 using ChyguiSlide.Services.Models;
@@ -16,6 +17,7 @@ public class ProjectionStateService : IProjectionStateService
     private IReadOnlyList<string> _sections = Array.Empty<string>();
     private IReadOnlyList<string?> _sectionCaptions = Array.Empty<string?>();
     private ProjectionContentKind _contentKind = ProjectionContentKind.Song;
+    private string? _mediaPath;
     private ProjectionState _current = ProjectionState.Empty;
     private IReadOnlyList<string>? _linesOverride;
 
@@ -68,6 +70,37 @@ public class ProjectionStateService : IProjectionStateService
             _sections = nextSections;
             _sectionCaptions = nextCaptions;
             _contentKind = contentKind;
+            _mediaPath = null;
+            _linesOverride = null;
+
+            PublishState();
+        }
+    }
+
+    public void SetMedia(string mediaPath, string title, Guid? songId = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(mediaPath);
+
+        lock (_stateLock)
+        {
+            var nextTitle = string.IsNullOrWhiteSpace(title) ? Path.GetFileName(mediaPath) : title.Trim();
+            var nextSongId = songId ?? Guid.NewGuid();
+            if (_contentKind == ProjectionContentKind.Media
+                && _songId == nextSongId
+                && string.Equals(_mediaPath, mediaPath, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(_songTitle, nextTitle, StringComparison.Ordinal)
+                && _linesOverride is null)
+            {
+                return;
+            }
+
+            _songId = nextSongId;
+            _songTitle = nextTitle;
+            _sectionIndex = 0;
+            _sections = Array.Empty<string>();
+            _sectionCaptions = Array.Empty<string?>();
+            _contentKind = ProjectionContentKind.Media;
+            _mediaPath = mediaPath;
             _linesOverride = null;
 
             PublishState();
@@ -202,6 +235,7 @@ public class ProjectionStateService : IProjectionStateService
             _sectionCaptions = Array.Empty<string?>();
             _sectionIndex = 0;
             _contentKind = ProjectionContentKind.Song;
+            _mediaPath = null;
             _linesOverride = null;
             PublishState();
         }
@@ -250,7 +284,8 @@ public class ProjectionStateService : IProjectionStateService
             lines,
             DateTimeOffset.UtcNow,
             caption,
-            _contentKind);
+            _contentKind,
+            _mediaPath);
 
         System.Diagnostics.Debug.WriteLine($"[ProjectionStateService] PublishState: invoking StateChanged");
         ChyguiSlide.Data.InteractionLogger.Log($"ProjectionStateService.PublishState: invoking StateChanged");

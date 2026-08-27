@@ -64,7 +64,7 @@ public sealed partial class LucideIcon : UserControl
         RegisterPropertyChangedCallback(ForegroundProperty, (_, _) => ApplyStrokeBrush());
     }
 
-    /// <summary>Имя файла Lucide без .svg, например plus, trash-2, book-open.</summary>
+    /// <summary>Имя файла Lucide без .svg, например plus, trash-2, book-open-text.</summary>
     public string Kind
     {
         get => (string)GetValue(KindProperty);

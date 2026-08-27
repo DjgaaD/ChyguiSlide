@@ -14,6 +14,7 @@ public interface IProjectionStateService
         int initialSectionIndex = 0,
         IReadOnlyList<string?>? sectionCaptions = null,
         ProjectionContentKind contentKind = ProjectionContentKind.Song);
+    void SetMedia(string mediaPath, string title, Guid? songId = null);
     void SetPlaylistContext(Guid? playlistId);
     void AdvanceSection();
     void PreviousSection();

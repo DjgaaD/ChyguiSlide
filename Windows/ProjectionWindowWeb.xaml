@@ -7,9 +7,19 @@
     mc:Ignorable="d">
 
     <Grid x:Name="RootGrid">
-        <WebView2 x:Name="WebView" 
-                  HorizontalAlignment="Stretch" 
+        <WebView2 x:Name="WebView"
+                  HorizontalAlignment="Stretch"
                   VerticalAlignment="Stretch"
                   DefaultBackgroundColor="Black" />
+        <Image
+            x:Name="ForegroundMediaImage"
+            Stretch="Uniform"
+            Visibility="Collapsed" />
+        <MediaPlayerElement
+            x:Name="ForegroundMediaPlayer"
+            AreTransportControlsEnabled="False"
+            AutoPlay="False"
+            Stretch="Uniform"
+            Visibility="Collapsed" />
     </Grid>
 </Window>

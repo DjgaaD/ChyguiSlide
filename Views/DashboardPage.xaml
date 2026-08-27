@@ -14,7 +14,7 @@
         <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter" />
     </Page.Resources>
 
-    <Grid Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" Padding="24">
+    <Grid Background="{ThemeResource ModernPageBackgroundBrush}" Padding="24">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -42,7 +42,9 @@
 
         <Border
             Grid.Row="1"
-            Background="{ThemeResource LayerFillColorDefaultBrush}"
+            Background="{ThemeResource ModernSurfaceBrush}"
+            BorderBrush="{ThemeResource ModernStrokeBrush}"
+            BorderThickness="1"
             CornerRadius="12"
             Padding="8">
             <ListView
@@ -57,10 +59,27 @@
                             <ColumnDefinition Width="180" />
                             <ColumnDefinition Width="88" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" FontWeight="SemiBold" Text="#" />
-                        <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="№" />
-                        <TextBlock Grid.Column="2" FontWeight="SemiBold" Text="Песня" />
-                        <TextBlock Grid.Column="3" FontWeight="SemiBold" Text="Показы" HorizontalAlignment="Right" />
+                        <TextBlock
+                            Grid.Column="0"
+                            FontWeight="SemiBold"
+                            Foreground="{ThemeResource ModernMutedBrush}"
+                            Text="#" />
+                        <TextBlock
+                            Grid.Column="1"
+                            FontWeight="SemiBold"
+                            Foreground="{ThemeResource ModernMutedBrush}"
+                            Text="№" />
+                        <TextBlock
+                            Grid.Column="2"
+                            FontWeight="SemiBold"
+                            Foreground="{ThemeResource ModernMutedBrush}"
+                            Text="Песня" />
+                        <TextBlock
+                            Grid.Column="3"
+                            FontWeight="SemiBold"
+                            Foreground="{ThemeResource ModernMutedBrush}"
+                            Text="Показы"
+                            HorizontalAlignment="Right" />
                     </Grid>
                 </ListView.Header>
                 <ListView.ItemContainerStyle>
@@ -82,7 +101,7 @@
                             <TextBlock
                                 Grid.Column="0"
                                 VerticalAlignment="Center"
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Foreground="{ThemeResource ModernMutedBrush}"
                                 Text="{Binding Rank}" />
                             <TextBlock
                                 Grid.Column="1"

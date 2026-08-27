@@ -18,6 +18,16 @@
             HorizontalAlignment="Stretch"
             VerticalAlignment="Stretch"
             IsHitTestVisible="False" />
+        <Image
+            x:Name="ForegroundMediaImage"
+            Stretch="Uniform"
+            Visibility="Collapsed" />
+        <MediaPlayerElement
+            x:Name="ForegroundMediaPlayer"
+            AreTransportControlsEnabled="False"
+            AutoPlay="False"
+            Stretch="Uniform"
+            Visibility="Collapsed" />
         <MediaPlayerElement
             x:Name="VideoPlayer"
             AreTransportControlsEnabled="False"

@@ -8,7 +8,8 @@ public record ProjectionState(
     IReadOnlyList<string> VisibleLines,
     DateTimeOffset UpdatedAt,
     string? ReferenceCaption,
-    ProjectionContentKind ContentKind = ProjectionContentKind.Song)
+    ProjectionContentKind ContentKind = ProjectionContentKind.Song,
+    string? MediaPath = null)
 {
     public static ProjectionState Empty { get; } = new(
         null,
@@ -18,6 +19,9 @@ public record ProjectionState(
         Array.Empty<string>(),
         DateTimeOffset.MinValue,
         null,
-        ProjectionContentKind.Song);
-}
+        ProjectionContentKind.Song,
+        null);
 
+    public bool IsMedia => ContentKind == ProjectionContentKind.Media
+        && !string.IsNullOrWhiteSpace(MediaPath);
+}

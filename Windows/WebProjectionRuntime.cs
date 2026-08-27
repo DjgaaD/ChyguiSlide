@@ -26,7 +26,7 @@ internal static class WebProjectionRuntime
             ?? throw new InvalidOperationException("CoreWebView2 не создан.");
 
         ApplySettings(core);
-        MapBackgrounds(core);
+        MapLocalMediaFolders(core);
 
         var htmlPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Web", "projection.html");
         if (!File.Exists(htmlPath))
@@ -57,12 +57,17 @@ internal static class WebProjectionRuntime
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "ChyguiSlide",
                 "WebView2",
-                profileName);
+                // суффикс v2 — новый env с --autoplay-policy (кэш Environments в процессе + профиль)
+                profileName + "-v2");
             Directory.CreateDirectory(userDataFolder);
             var environment = await CoreWebView2Environment.CreateWithOptionsAsync(
                 browserExecutableFolder: null,
                 userDataFolder: userDataFolder,
-                options: new CoreWebView2EnvironmentOptions());
+                options: new CoreWebView2EnvironmentOptions
+                {
+                    // Иначе <video> с звуком не стартует с C#/автостарта (политика autoplay).
+                    AdditionalBrowserArguments = "--autoplay-policy=no-user-gesture-required"
+                });
             Environments[profileName] = environment;
             return environment;
         }
@@ -81,7 +86,7 @@ internal static class WebProjectionRuntime
         core.Settings.AreDefaultScriptDialogsEnabled = false;
     }
 
-    private static void MapBackgrounds(CoreWebView2 core)
+    private static void MapLocalMediaFolders(CoreWebView2 core)
     {
         var backgroundsDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -91,6 +96,16 @@ internal static class WebProjectionRuntime
         core.SetVirtualHostNameToFolderMapping(
             "chygui.backgrounds",
             backgroundsDir,
+            CoreWebView2HostResourceAccessKind.Allow);
+
+        var mediaDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "ChyguiSlide",
+            "Media");
+        Directory.CreateDirectory(mediaDir);
+        core.SetVirtualHostNameToFolderMapping(
+            "chygui.media",
+            mediaDir,
             CoreWebView2HostResourceAccessKind.Allow);
     }
 }
